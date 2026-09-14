@@ -1,0 +1,7 @@
+/data/database
+/data/.cache
+__pycache__/
+.pytest_cache/
+.DS_Store
+*.json.tmp
+.env
