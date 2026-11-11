@@ -163,6 +163,19 @@ def render_yaml(cases: list[dict], exclusions: Counter, stats: dict, n_records: 
     return "\n".join(lines) + "\n"
 
 
+ANNOTATION_FIELDS = {"notes": "", "alt_gold_sql": []}
+
+
+def without_annotations(doc: dict) -> dict:
+    """The generated content of a cases.yaml document, with hand-edited fields reset."""
+    return {**doc, "cases": [{**c, **ANNOTATION_FIELDS} for c in doc["cases"]]}
+
+
+def matches_generator(committed_text: str, generated_text: str) -> bool:
+    """True if the committed file is the generator's output plus adjudication edits only."""
+    return without_annotations(yaml.safe_load(committed_text)) == yaml.safe_load(generated_text)
+
+
 def build() -> tuple[str, list[dict]]:
     with open(VALIDATION_JSON) as f:
         records = json.load(f)
@@ -186,16 +199,21 @@ def build() -> tuple[str, list[dict]]:
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--check", action="store_true", help="verify cases.yaml is what this script generates")
+    ap.add_argument("--check", action="store_true",
+                    help="verify cases.yaml is this script's output (edits to notes/alt_gold_sql are allowed)")
     args = ap.parse_args()
     text, cases = build()
     if args.check:
-        current = CASES_YAML.read_text() if CASES_YAML.exists() else ""
-        if current != text:
-            print("cases.yaml differs from generated output (hand annotations, or the sampler changed)", file=sys.stderr)
+        if not CASES_YAML.exists() or not matches_generator(CASES_YAML.read_text(), text):
+            print("cases.yaml differs from generator output beyond notes/alt_gold_sql "
+                  "(the sampler, the data, or a case was changed)", file=sys.stderr)
             sys.exit(1)
-        print("cases.yaml matches generator output", file=sys.stderr)
+        print("cases.yaml matches generator output (ignoring notes/alt_gold_sql)", file=sys.stderr)
         return
+    if CASES_YAML.exists() and CASES_YAML.read_text() != text:
+        annotated = any(c.get("notes") or c.get("alt_gold_sql") for c in yaml.safe_load(CASES_YAML.read_text())["cases"])
+        if annotated:
+            sys.exit("cases.yaml has adjudication edits (notes/alt_gold_sql); refusing to overwrite them")
     CASES_YAML.write_text(text)
     print(f"wrote {CASES_YAML} ({len(cases)} cases)", file=sys.stderr)
 

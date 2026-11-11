@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import random
+import re
 import time
 from dataclasses import dataclass, field
 
@@ -55,6 +56,11 @@ class FatalError(Exception):
     """Configuration or credential problem that would fail every case - stop the run."""
 
 
+# Where each provider's SDK looks for credentials (Anthropic also accepts an `ant auth login`
+# profile; Gemini also accepts GOOGLE_API_KEY).
+KEY_ENV_VARS = {"anthropic": "ANTHROPIC_API_KEY", "openai": "OPENAI_API_KEY", "gemini": "GEMINI_API_KEY"}
+
+
 def load_roster() -> dict[str, dict]:
     with open(MODELS_YAML) as f:
         return yaml.safe_load(f)["models"]
@@ -75,7 +81,14 @@ def make_model(name: str):
     provider = providers.get(cfg.get("provider"))
     if provider is None:
         raise SystemExit(f"model {name!r}: unknown provider {cfg.get('provider')!r}")
-    return provider(name, cfg)
+    try:
+        return provider(name, cfg)
+    except Exception as e:  # SDK clients raise on construction when credentials are missing
+        env_var = KEY_ENV_VARS.get(cfg["provider"], "the API key")
+        raise SystemExit(
+            f"could not create a client for {name!r}: {type(e).__name__}: {e}\n"
+            f"Check that {env_var} is set in .env (see .env.example), then run `python -m harness models`."
+        ) from e
 
 
 class OracleModel:
@@ -106,6 +119,16 @@ class NullModel:
 # ---------------------------------------------------------------------------
 
 RETRY, FATAL = "retry", "fatal"
+
+# Out-of-credit and spend-cap errors arrive as 429s that look like rate limits but never
+# clear by waiting. OpenAI: insufficient_quota / credit_balance_exhausted; Anthropic:
+# enforced_spend_limit_reached. Deliberately not "quota" or "billing": Gemini's ordinary
+# per-minute rate-limit message mentions both.
+_OUT_OF_CREDIT = re.compile(
+    r"insufficient_quota|credit_balance_exhausted|enforced_spend_limit_reached|no credits"
+    r"|credit balance|credits? (?:are |have been )?(?:depleted|exhausted)",
+    re.I,
+)
 
 
 class APIModel:
@@ -138,16 +161,31 @@ class APIModel:
                 break
             except Exception as e:
                 verdict = self._classify(e)
+                if verdict == RETRY and _OUT_OF_CREDIT.search(f"{getattr(e, 'body', '')} {e}"):
+                    raise FatalError(
+                        f"out of credits or over the spend limit for {self.model} - add credits or raise the "
+                        f"limit in that provider's billing settings, then resume. {type(e).__name__}: {e}"
+                    ) from e
                 if verdict == FATAL:
                     raise FatalError(f"{type(e).__name__}: {e}") from e
                 if verdict != RETRY:
-                    raise
+                    # Not a known transient or config error (e.g. the SDK couldn't validate a
+                    # response). Record it; the runner stops the run if these keep happening.
+                    raise InfraError("provider_error", f"{type(e).__name__}: {e}", attempts=attempt) from e
                 last_error = e
-            if attempt >= self.max_attempts or time.monotonic() - started > self.case_deadline_s:
+            elapsed = time.monotonic() - started
+            if attempt >= self.max_attempts or elapsed > self.case_deadline_s:
                 kind = "timeout" if self._is_timeout(last_error) else "api_error"
                 raise InfraError(kind, f"{type(last_error).__name__}: {last_error}", attempts=attempt)
-            time.sleep(self._backoff(attempt, last_error))
-        return self._to_completion(resp, latency, attempt)
+            time.sleep(min(self._backoff(attempt, last_error), max(1.0, self.case_deadline_s - elapsed)))
+        try:
+            return self._to_completion(resp, latency, attempt)
+        except InfraError:
+            raise
+        except Exception as e:  # a response shape this provider class doesn't understand
+            raise InfraError(
+                "response_parse_error", f"{type(e).__name__}: {e}; response: {repr(resp)[:2000]}", attempts=attempt
+            ) from e
 
     @staticmethod
     def _retry_for_status(status: int) -> str:
@@ -167,10 +205,16 @@ class APIModel:
                 pass
         return min(60.0, 2.0 ** attempt) * random.uniform(0.5, 1.5)
 
+    # Version suffixes a vendor may append when an ID resolves to a snapshot:
+    # -20251001 (Anthropic), -2026-08-01 (OpenAI), -001 / -09-2025 (Google).
+    _SNAPSHOT_SUFFIX = re.compile(r"-(\d{8}|\d{4}-\d{2}-\d{2}|\d{3}|\d{2}-\d{4})")
+
     def _check_served(self, served: str | None, attempts: int) -> str:
         served = (served or "").removeprefix("models/")
-        # An alias may resolve to a dated snapshot (model -> model-2026...), nothing else.
-        if served != self.model and not served.startswith(self.model + "-"):
+        # Accept the exact ID or that ID plus a snapshot suffix - never a sibling model that
+        # merely shares a prefix (claude-fable-5 vs claude-fable-5-1, gpt-5.6 vs gpt-5.6-luna).
+        suffix = served[len(self.model):] if served.startswith(self.model) else None
+        if served != self.model and not (suffix and self._SNAPSHOT_SUFFIX.fullmatch(suffix)):
             raise InfraError("served_model_mismatch", f"asked for {self.model}, served by {served or 'unknown'}", attempts)
         return served
 
@@ -290,13 +334,17 @@ class OpenAIModel(APIModel):
 
     def _to_completion(self, resp, latency, attempts):
         served = self._check_served(resp.model, attempts)
+        reason = resp.incomplete_details.reason if resp.incomplete_details else None
+        if resp.status == "failed" or resp.error:
+            raise InfraError("api_error", f"response failed: {resp.error}", attempts)
+        if resp.status == "incomplete" and reason not in ("max_output_tokens", "content_filter"):
+            raise InfraError("api_error", f"response incomplete: {reason}", attempts)
         refused = any(
             getattr(part, "type", None) == "refusal"
             for item in resp.output or []
             if getattr(item, "type", None) == "message"
             for part in item.content or []
         )
-        reason = resp.incomplete_details.reason if resp.incomplete_details else None
         u = resp.usage
         cached = (u.input_tokens_details.cached_tokens or 0) if u and u.input_tokens_details else 0
         usage = {
@@ -368,6 +416,10 @@ class GeminiModel(APIModel):
         blocked_prompt = bool(resp.prompt_feedback and resp.prompt_feedback.block_reason)
         parts = (candidate.content.parts or []) if candidate and candidate.content else []
         text = "".join(p.text for p in parts if p.text and not p.thought)
+        if not text and not blocked_prompt and finish not in self.BLOCKED | {"MAX_TOKENS"}:
+            # Empty response with no refusal or truncation behind it (e.g. finish OTHER):
+            # nothing the model said can be scored, so retry it rather than grade it.
+            raise InfraError("api_error", f"empty response (finish_reason={finish})", attempts)
         u = resp.usage_metadata
         cached = (u.cached_content_token_count or 0) if u else 0
         thoughts = (u.thoughts_token_count or 0) if u else 0

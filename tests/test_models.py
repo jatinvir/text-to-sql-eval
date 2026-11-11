@@ -268,3 +268,89 @@ def test_gemini_transport_timeout_is_infra_error():
     with pytest.raises(InfraError) as exc:
         m.complete(CASE, "s", "u")
     assert exc.value.kind == "timeout" and exc.value.attempts == 2
+
+
+@pytest.mark.parametrize("requested,served,ok", [
+    ("claude-haiku-4-5", "claude-haiku-4-5-20251001", True),
+    ("gpt-5.6-sol", "gpt-5.6-sol-2026-08-01", True),
+    ("gemini-3.8-flash", "models/gemini-3.8-flash-001", True),
+    ("claude-fable-5", "claude-fable-5-1", False),
+    ("gpt-5.6", "gpt-5.6-luna", False),
+    ("gpt-5.6-sol", "gpt-5.6-sol-pro", False),
+])
+def test_served_model_check_only_accepts_snapshots(requested, served, ok):
+    m = models.APIModel("x", {"model": requested})
+    if ok:
+        assert m._check_served(served, 1)
+    else:
+        with pytest.raises(InfraError):
+            m._check_served(served, 1)
+
+
+def test_unexpected_sdk_errors_and_unreadable_responses_are_infra_errors():
+    class Broken(models.APIModel):
+        def _call(self, system, user):
+            raise ValueError("SDK could not validate the response")
+
+        def _classify(self, e):
+            return None
+
+    with pytest.raises(InfraError) as exc:
+        Broken("b", {"model": "m"}).complete(CASE, "s", "u")
+    assert exc.value.kind == "provider_error"
+
+    class OddShape(models.APIModel):
+        def _call(self, system, user):
+            return {"surprise": True}
+
+        def _to_completion(self, resp, latency, attempts):
+            return resp.candidates[0]
+
+    with pytest.raises(InfraError) as exc:
+        OddShape("o", {"model": "m"}).complete(CASE, "s", "u")
+    assert exc.value.kind == "response_parse_error" and "surprise" in str(exc.value)
+
+
+def test_openai_failed_response_is_infra_error():
+    failed = oai_response(text="", status="failed")
+    failed["error"] = {"code": "server_error", "message": "boom"}
+    with pytest.raises(InfraError) as exc:
+        make_openai([(200, failed)]).complete(CASE, "s", "u")
+    assert exc.value.kind == "api_error"
+
+
+def test_gemini_empty_response_without_reason_is_infra_error():
+    with pytest.raises(InfraError) as exc:
+        make_gemini([(200, gem_response(finish="OTHER", text="", thought=False))]).complete(CASE, "s", "u")
+    assert exc.value.kind == "api_error"
+
+
+def test_missing_api_key_gives_actionable_message(monkeypatch):
+    monkeypatch.setenv("OPENAI_API_KEY", "placeholder")
+    monkeypatch.delenv("OPENAI_API_KEY")
+    with pytest.raises(SystemExit, match=r"OPENAI_API_KEY is set in \.env"):
+        models.make_model("gpt-5.6-luna")
+
+
+def test_out_of_credit_errors_stop_immediately_instead_of_retrying():
+    body = {"error": {"message": "You have no credits remaining. Add credits to continue using the API.",
+                      "type": "insufficient_quota", "param": None, "code": "credit_balance_exhausted"}}
+    with pytest.raises(FatalError, match="out of credits"):
+        make_openai([(429, body)] * 6).complete(CASE, "s", "u")
+
+    spend_cap = {"type": "error", "error": {"type": "rate_limit_error", "message": "You have reached your API usage limits",
+                                            "details": {"error_code": "enforced_spend_limit_reached"}}}
+    with pytest.raises(FatalError, match="out of credits"):
+        make([(429, spend_cap)] * 6).complete(CASE, "s", "u")
+
+    with pytest.raises(FatalError, match="out of credits"):
+        make_gemini([gem_error(429, "RESOURCE_EXHAUSTED")[0:1] + ({"error": {
+            "code": 429, "message": "Your prepayment credits are depleted.", "status": "RESOURCE_EXHAUSTED"}},)] * 6
+        ).complete(CASE, "s", "u")
+
+
+def test_ordinary_gemini_rate_limit_is_still_retried():
+    rate_limited = (429, {"error": {"code": 429, "status": "RESOURCE_EXHAUSTED", "message":
+                    "You exceeded your current quota, please check your plan and billing details."}})
+    c = make_gemini([rate_limited, (200, gem_response())]).complete(CASE, "s", "u")
+    assert c.status == "ok" and c.attempts == 2

@@ -169,11 +169,19 @@ The rules, each a judgment call:
   literal-aware parser that agrees with Spider's own parse on 1034/1034 dev queries. Rows
   whose sort keys tie in gold may come in any order among themselves: gold's rows are split
   into blocks of equal keys, and the prediction must fill the blocks in sequence.
-- **Right order by accident fails.** Predictions that pass an ordered case are re-run with
-  SQLite's `reverse_unordered_selects` pragma. A query with no ORDER BY of its own that
-  only matched because rows happen to be stored in order comes back reversed and fails
-  (`order_by_accident`). The pragma doesn't affect queries that have ORDER BY (verified),
-  so a correct query is unaffected.
+- **Right order by accident fails** (`order_by_accident`), via two checks on a prediction
+  that matches an ordered case:
+  - *Structural:* if gold's result spans more than one sort-key group, the prediction needs a
+    top-level ORDER BY of its own. Without one, SQL leaves row order undefined, even when
+    GROUP BY or an index happens to produce the right order in SQLite today.
+  - *Scan order:* the prediction is re-run with SQLite's `reverse_unordered_selects` pragma.
+    This catches the single-group case, e.g. an unordered `LIMIT 1` that picked the right
+    row only because of storage order, while still passing a deterministic top-1 like
+    `WHERE score = (SELECT max(score) …)`. The pragma doesn't affect queries with ORDER BY
+    (verified), so a correct query is unaffected.
+
+  (Grader v1 had only the pragma check, which missed order implied by GROUP BY. The code
+  review found it; v2 added the structural check.)
 - **Floats compare after rounding to 6 decimals; `3 == 3.0`.** `avg(x)` and
   `sum(x)/count(*)` differ in the 15th decimal. Rounding to 2 when the question didn't ask
   still fails.
@@ -186,8 +194,8 @@ The rules, each a judgment call:
   harness error and never scores a model.
 
 **Validation.** Gold graded against itself passes on all 1034 dev queries. The oracle
-scores 100% on the 150 and the empty baseline 0%. 52 tests, including the edge cases above
-and the Anthropic provider against a mock HTTP transport through the real SDK.
+scores 100% on the 150 and the empty baseline 0%. 80 tests, including the edge cases above
+and each vendor's provider against a mock HTTP server through its real SDK.
 
 ### How lenient is execution match here?
 
@@ -195,15 +203,23 @@ and the Anthropic provider against a mock HTTP transport through the real SDK.
 (`>`→`>=`, `=`→`!=`, `AND`→`OR`, `DESC`→`ASC`, `INTERSECT`→`UNION`, LIMIT n→n+1, …) and
 grades the mutant.
 
-**15% of wrong mutants pass (22/146).** Almost all are inequality boundaries: `>`→`>=`
-survives 9/15 and `<`→`<=` 4/4, because no row sits exactly on the boundary value. The
-survivors skew hard: easy 3, medium 4, hard 5, **extra 10**.
+**15% of wrong mutants pass (22/146).** Most are inequality boundaries: `>`→`>=` survives
+9/15 and `<`→`<=` 4/4, because no row sits exactly on the boundary value.
 
-Consequence for the headline: execution match overstates accuracy most on extra-hard,
-which is exactly the bucket the comparison leans on. The fix is test-suite accuracy
-(Zhong et al., 2020) — grade against several fuzzed copies of each database so boundary
-values exist. It's a grader extension, not a rewrite, and is the first thing to build if
-extra-hard differences turn out to be close.
+The miss *rate* is roughly flat across difficulty: easy 3/20 (15%), medium 4/29 (14%),
+hard 5/42 (12%), extra 10/55 (18%). Extra-hard has the most misses only because its longer
+queries give more places to mutate. (An earlier version of this entry said the misses
+"skew hard" from the raw counts alone; the per-tier rates don't support that.)
+
+Consequence for the headline: execution match overstates every bucket's accuracy by a
+similar margin, so it inflates absolute scores more than it distorts comparisons between
+buckets. The fix is test-suite accuracy (Zhong et al., 2020): grade against several fuzzed
+copies of each database so boundary values exist. It's a grader extension, not a rewrite.
+
+Caveat on the 15%: the mutants are synthetic, not real model answers, and a few
+"wrong-by-construction" edits are equivalent on inspection (e.g. `HAVING count(*) >= 1`
+after an inner join). Treat it as an estimate of grader leniency, not a measured error
+rate on model output.
 
 (Separately, "add DISTINCT" and "JOIN → LEFT JOIN" pass ~90%, but those rewrites are
 usually *correct* — `DISTINCT count(*)` is still the count — so they're reported apart.)
@@ -239,12 +255,32 @@ passed and is listed separately. `truncated` (hit max_tokens) and `unparseable` 
 of *accuracy* but counted in *strict accuracy*, and the report shows both.
 
 **The model that answered must be the model we asked for.** The runner checks the served
-model on every response, allowing only alias → dated snapshot. Refusal fallbacks are
-deliberately off: a fallback means another model answered.
+model on every response. It accepts the exact ID, or the ID plus a snapshot-shaped suffix
+(`-20251001`, `-2026-08-01`, `-001`, `-09-2025`). A plain prefix match isn't enough:
+`claude-fable-5-1` starts with `claude-fable-5` but is a different model. Refusal fallbacks
+are deliberately off: a fallback means another model answered.
+
+**Stop spending as soon as something is systematically wrong.**
+- Ctrl-C stops a run immediately: queued cases are cancelled, and only requests already in
+  flight finish. The manifest says `interrupted`.
+- A response the harness can't interpret (an SDK validation error, an unexpected response
+  shape, a served-model mismatch) goes to `errors.jsonl` like any infra error. Three in a
+  row abort the run, because that pattern is a harness bug and every further case would be
+  billed for nothing.
+- An unexpected crash marks the manifest `crashed` rather than leaving it `running`.
 
 **Manifest per run**: model config verbatim, test-set SHA-256, prompt fingerprint, grader
-version, reps, git commit and dirty flag, SQLite/SDK versions. `--resume` refuses to continue
-a run if any of those changed.
+version, reps, case selection, git commit and dirty flag, SQLite/SDK versions. `--resume`
+refuses to continue a run if any of those changed, and always resumes the saved case
+selection, so resuming a 10-case smoke run can't silently turn it into a 150-case run.
+Each run gets its own directory, even two started in the same second.
+
+**Adjudication edits are validated, and they don't break the reproducibility check.**
+`alt_gold_sql` must be a list of queries that run; a typo fails at load with the case ID,
+not halfway through a regrade. `build_testset.py --check` (and its test) compare the
+generated cases ignoring `notes` and `alt_gold_sql`, so the test suite stays green through
+the review pass and still catches a change to the sampled cases themselves. Regenerating
+refuses to overwrite a file that has adjudication edits.
 
 **Roster**: see "Cross-vendor comparison" below. Change it by adding a new roster name,
 not by editing an existing one.

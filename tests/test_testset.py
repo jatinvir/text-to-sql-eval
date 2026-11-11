@@ -37,7 +37,31 @@ def test_distinct_gold_per_single():
 
 def test_generator_reproduces_committed_file():
     text, _ = build_testset.build()
-    assert text == CASES_YAML.read_text(), "cases.yaml was hand-edited or the sampler changed; see build_testset.py --check"
+    assert build_testset.matches_generator(CASES_YAML.read_text(), text), \
+        "cases.yaml differs from the generator beyond notes/alt_gold_sql; see build_testset.py --check"
+
+
+def test_reproducibility_check_allows_adjudication_but_not_case_changes():
+    text, _ = build_testset.build()
+    annotated = text.replace('alt_gold_sql: []\n    notes: ""', 'alt_gold_sql:\n      - "SELECT 1"\n    notes: "checked"', 1)
+    assert annotated != text and build_testset.matches_generator(annotated, text)
+    first_question = testset.load().cases[0].question
+    changed = text.replace(first_question, first_question + " (edited)", 1)
+    assert not build_testset.matches_generator(changed, text)
+
+
+def test_alt_gold_sql_must_be_a_list_of_runnable_queries(tmp_path):
+    import pytest
+
+    original = CASES_YAML.read_text()
+    as_string = tmp_path / "string.yaml"
+    as_string.write_text(original.replace("alt_gold_sql: []", 'alt_gold_sql: "SELECT 1"', 1))
+    with pytest.raises(ValueError, match="must be a list"):
+        testset.load(as_string)
+    broken = tmp_path / "broken.yaml"
+    broken.write_text(original.replace("alt_gold_sql: []", 'alt_gold_sql:\n      - "SELECT nope FROM nowhere"', 1))
+    with pytest.raises(ValueError, match="does not run"):
+        testset.load(broken)
 
 
 def test_order_by_detection_agrees_with_spider_parser():

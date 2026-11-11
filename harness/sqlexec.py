@@ -61,6 +61,14 @@ def normalize_value(v):
     return v
 
 
+def connect_readonly(db_path: str | Path) -> sqlite3.Connection:
+    # as_uri() percent-encodes the path, so directories containing ?, # or % still work.
+    conn = sqlite3.connect(Path(db_path).resolve().as_uri() + "?mode=ro", uri=True)
+    # Some Spider databases contain non-UTF-8 bytes in TEXT columns.
+    conn.text_factory = lambda b: b.decode("utf-8", errors="replace")
+    return conn
+
+
 def _authorizer(action, *_args):
     return sqlite3.SQLITE_OK if action in _ALLOWED_ACTIONS else sqlite3.SQLITE_DENY
 
@@ -88,9 +96,7 @@ def execute(
         # A missing database is a harness problem, not a model problem.
         raise FileNotFoundError(path)
 
-    conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True, check_same_thread=False)
-    # Some Spider databases contain non-UTF-8 bytes in TEXT columns.
-    conn.text_factory = lambda b: b.decode("utf-8", errors="replace")
+    conn = connect_readonly(path)
     start = time.monotonic()
     deadline = start + timeout_s
     timed_out = False

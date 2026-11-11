@@ -4,9 +4,12 @@ Rules (the reasoning behind each is in NOTES.md, "Grader"):
   * Rows are compared as a multiset (bag): duplicates count, row order ignored...
   * ...unless gold has a top-level ORDER BY. Then order is checked, but rows whose sort
     keys tie in gold may appear in any order among themselves.
-  * If order matters and the prediction passes, it is re-run with SQLite's
-    reverse_unordered_selects pragma. A prediction with no ORDER BY of its own that only
-    matched gold's order by accident of scan order fails that re-run.
+  * Right order by accident fails. If order matters and the prediction matches, two checks:
+    (a) a result spanning more than one sort-key group needs a top-level ORDER BY in the
+    prediction too - without one, SQL leaves row order undefined, even if GROUP BY or an
+    index happened to produce the right order here; (b) the prediction is re-run with
+    SQLite's reverse_unordered_selects pragma, which catches a LIMIT that picked the right
+    rows only because of scan order.
   * Column order is free (any permutation of the predicted columns may match gold's),
     but the column count must match. Extra columns fail strictly; ``lenient_passed``
     records whether the prediction would pass if extra columns were allowed.
@@ -24,7 +27,7 @@ from pathlib import Path
 
 from .sqlexec import ExecResult, clean_sql, execute
 
-GRADER_VERSION = "1"
+GRADER_VERSION = "2"
 
 REASONS = {
     "match": "result matches gold",
@@ -37,7 +40,7 @@ REASONS = {
     "wrong_rows": "different rows",
     "duplicates": "same distinct rows as gold but different duplicate counts (DISTINCT mismatch)",
     "wrong_order": "right rows, wrong order (gold has ORDER BY)",
-    "order_by_accident": "order matched gold only by accident of scan order (no ORDER BY)",
+    "order_by_accident": "order matched gold only by accident (no ORDER BY to guarantee it)",
 }
 
 PREVIEW_ROWS = 5
@@ -225,6 +228,11 @@ def _column_mapping(pred_rows, gold_rows, n_pred, n_gold, *, bag: bool, order: O
         c.sort(key=lambda i: i != j)  # try the identity mapping first
         candidates.append(c)
     target = agg(gold_rows)
+    # Predicted columns that are identical row by row are interchangeable: trying one of
+    # them at a given position is as good as trying all, which stops e.g. several all-NULL
+    # columns from multiplying the search.
+    vector_class: dict[tuple, int] = {}
+    column_class = [vector_class.setdefault(tuple(r[i] for r in pred_rows), len(vector_class)) for i in range(n_pred)]
     tries = 0
 
     def search(j, perm, used):
@@ -237,9 +245,11 @@ def _column_mapping(pred_rows, gold_rows, n_pred, n_gold, *, bag: bool, order: O
             if order is not None and not order.check(projected):
                 return None
             return list(perm)
+        tried_classes = set()
         for i in candidates[j]:
-            if i in used or tries >= _MAX_PERMUTATION_TRIES:
+            if i in used or column_class[i] in tried_classes or tries >= _MAX_PERMUTATION_TRIES:
                 continue
+            tried_classes.add(column_class[i])
             perm.append(i)
             used.add(i)
             found = search(j + 1, perm, used)
@@ -300,6 +310,14 @@ def _preview(res: ExecResult | None) -> list:
     return [[cell(v) for v in row] for row in res.rows[:PREVIEW_ROWS]]
 
 
+def _order_by_accident(db: str, pred_sql: str, pred_has_order_by: bool, gold: ExecResult, order: OrderSpec) -> bool:
+    groups = len(order.blocks) if order.blocks is not None else len(gold.rows)
+    if groups > 1 and not pred_has_order_by:
+        return True
+    reversed_pred = execute(db, pred_sql, reverse_scan=True)
+    return not reversed_pred.ok or _compare(reversed_pred, gold, order)[0] != "match"
+
+
 def grade(db_path: str | Path, gold_sqls: list[str], pred_sql: str | None) -> Grade:
     db = str(db_path)
     golds = [_gold(db, g) for g in gold_sqls]
@@ -322,14 +340,13 @@ def grade(db_path: str | Path, gold_sqls: list[str], pred_sql: str | None) -> Gr
 
     first_failure: tuple[str, bool] | None = None
     lenient_any = False
+    pred_has_order_by = top_level_order_by(pred_sql) is not None
     for idx, (gold, order, flags) in enumerate(golds):
         reason, lenient, perm = _compare(pred, gold, order)
+        if reason == "match" and order is not None and _order_by_accident(db, pred_sql, pred_has_order_by, gold, order):
+            reason = "order_by_accident"
+            lenient = False
         lenient_any = lenient_any or lenient
-        if reason == "match" and order is not None:
-            reversed_pred = execute(db, pred_sql, reverse_scan=True)
-            if not reversed_pred.ok or _compare(reversed_pred, gold, order)[0] != "match":
-                reason = "order_by_accident"
-                lenient = False
         if reason == "match":
             base["flags"] = list(flags)
             return Grade(passed=True, lenient_passed=True, reason="match", matched_gold=idx, **base, **pred_info)

@@ -18,7 +18,6 @@ import sqlite3
 import subprocess
 import sys
 import threading
-import time
 from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from dataclasses import asdict
 from datetime import datetime, timezone
@@ -32,6 +31,11 @@ from .testset import Case, TestSet
 
 # Manifest fields that must match for a resumed run to be the same experiment.
 _IDENTITY_KEYS = ("model_name", "model_config", "testset_sha256", "prompt_fingerprint", "grader_version", "reps")
+
+# Error kinds that mean the harness doesn't understand what the provider sent back. One is
+# noise; several in a row is a harness bug that would otherwise be paid for on every case.
+_SYSTEMATIC_ERROR_KINDS = {"provider_error", "response_parse_error", "served_model_mismatch"}
+MAX_CONSECUTIVE_SYSTEMATIC_ERRORS = 3
 
 
 def _now() -> str:
@@ -93,7 +97,6 @@ def run(
     quiet: bool = False,
 ) -> Path:
     model = make_model(model_name)
-    cases = select_cases(testset, case_ids, limit)
 
     identity = {
         "model_name": model_name,
@@ -108,11 +111,19 @@ def run(
         diffs = [k for k in _IDENTITY_KEYS if manifest.get(k) != identity[k]]
         if diffs:
             raise SystemExit(f"cannot resume {run_dir}: {', '.join(diffs)} changed since it started")
+        # A resumed run keeps the cases it started with; asking for different ones is an error.
+        saved_ids = manifest["selection"]["case_ids"]
+        if (case_ids or limit is not None) and [c.case_id for c in select_cases(testset, case_ids, limit)] != saved_ids:
+            raise SystemExit(f"cannot resume {run_dir}: it covers {len(saved_ids)} saved cases; "
+                             "resume without --cases/--limit")
+        cases = select_cases(testset, saved_ids)
         manifest["resumed_at"] = [*manifest.get("resumed_at", []), _now()]
     else:
-        stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
-        run_dir = run_dir or runs_root / f"{stamp}_{model_name}"
-        run_dir.mkdir(parents=True, exist_ok=True)
+        cases = select_cases(testset, case_ids, limit)
+        if run_dir is None:
+            run_dir = _new_run_dir(runs_root, model_name)
+        else:
+            run_dir.mkdir(parents=True, exist_ok=True)
         manifest = {
             "run_id": run_dir.name,
             **identity,
@@ -141,7 +152,6 @@ def run(
 
     stop = threading.Event()
     fatal: list[str] = []
-    counts = {"results": 0, "errors": 0}
 
     def work(case: Case, rep: int) -> tuple[str, dict]:
         if stop.is_set():
@@ -152,6 +162,10 @@ def run(
             completion = model.complete(case, system, user)
         except InfraError as e:
             return "error", {**base, "kind": e.kind, "message": str(e), "attempts": e.attempts}
+        except FatalError:
+            raise
+        except Exception as e:  # provider bug: record it rather than crash the run
+            return "error", {**base, "kind": "provider_error", "message": f"{type(e).__name__}: {e}"}
         try:
             g = grade(case.db_path, case.gold_sqls, completion.sql)
         except GoldExecutionError as e:
@@ -175,11 +189,21 @@ def run(
         }
         return "result", row
 
+    def abort(message: str, pending_futures) -> None:
+        if not stop.is_set():
+            fatal.append(message)
+            stop.set()
+            for p in pending_futures:
+                p.cancel()
+
     progress_total = len(todo)
     finished = 0
+    consecutive_systematic = 0
+    # The pool is shut down explicitly rather than by a `with` block: leaving a `with` on
+    # Ctrl-C would wait for every queued case to run (and be billed) before stopping.
+    pool = ThreadPoolExecutor(max_workers=max(1, workers))
     try:
-        with ThreadPoolExecutor(max_workers=max(1, workers)) as pool, \
-                open(results_path, "a") as results_f, open(errors_path, "a") as errors_f:
+        with open(results_path, "a") as results_f, open(errors_path, "a") as errors_f:
             pending = {pool.submit(work, c, rep) for c, rep in todo}
             while pending:
                 completed, pending = wait(pending, return_when=FIRST_COMPLETED)
@@ -189,11 +213,7 @@ def run(
                     try:
                         kind, row = fut.result()
                     except FatalError as e:
-                        if not stop.is_set():
-                            fatal.append(str(e))
-                            stop.set()
-                            for p in pending:
-                                p.cancel()
+                        abort(str(e), pending)
                         continue
                     if kind == "skipped":
                         continue
@@ -201,20 +221,30 @@ def run(
                     if kind == "result":
                         results_f.write(json.dumps(row) + "\n")
                         results_f.flush()
-                        counts["results"] += 1
+                        consecutive_systematic = 0
                     else:
                         errors_f.write(json.dumps(row) + "\n")
                         errors_f.flush()
-                        counts["errors"] += 1
+                        if row["kind"] in _SYSTEMATIC_ERROR_KINDS:
+                            consecutive_systematic += 1
+                            if consecutive_systematic >= MAX_CONSECUTIVE_SYSTEMATIC_ERRORS:
+                                abort(f"{consecutive_systematic} consecutive {row['kind']} errors - likely a harness "
+                                      f"problem, stopping before more cases are billed. Last: {row['message'][:300]}",
+                                      pending)
                     if not quiet:
                         _progress(finished, progress_total, kind, row)
-    except KeyboardInterrupt:
+    except BaseException as e:
         stop.set()
-        manifest["status"] = "interrupted"
+        pool.shutdown(wait=False, cancel_futures=True)  # requests already in flight still finish
+        manifest["status"] = "interrupted" if isinstance(e, KeyboardInterrupt) else "crashed"
+        if not isinstance(e, KeyboardInterrupt):
+            manifest["crash"] = f"{type(e).__name__}: {e}"
         manifest["updated_at"] = _now()
         _write_manifest(run_dir, manifest)
-        print(f"\ninterrupted - resume with: python -m harness run {model_name} --resume {run_dir}", file=sys.stderr)
+        print(f"\n{manifest['status']} - resume with: python -m harness run {model_name} --resume {run_dir}",
+              file=sys.stderr)
         raise
+    pool.shutdown(wait=True)
 
     all_results = read_jsonl(results_path)
     have = {(r["case_id"], r["rep"]) for r in all_results}
@@ -236,9 +266,23 @@ def run(
     return run_dir
 
 
+def _new_run_dir(runs_root: Path, model_name: str) -> Path:
+    """A fresh directory per run - never another run's, even if started in the same second."""
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+    base = runs_root / f"{stamp}_{model_name}"
+    for n in range(1, 1000):
+        candidate = base if n == 1 else base.with_name(f"{base.name}-{n}")
+        try:
+            candidate.mkdir(parents=True, exist_ok=False)
+            return candidate
+        except FileExistsError:
+            continue
+    raise RuntimeError(f"could not create a unique run directory under {runs_root}")
+
+
 def _progress(n: int, total: int, kind: str, row: dict) -> None:
     if kind == "error":
-        line = f"ERROR {row['kind']}: {row['message'][:80]}"
+        line = f"ERROR {row['kind']}: {row['message'][:200]}"
     else:
         verdict = "pass" if row["passed"] else row["reason"]
         if row["status"] != "ok":
@@ -261,18 +305,23 @@ def regrade(run_dir: Path, testset: TestSet, runs_root: Path = RUNS_DIR) -> Path
     and no model is called."""
     manifest = json.loads((run_dir / "manifest.json").read_text())
     cases = testset.by_id()
-    out_dir = runs_root / f"{run_dir.name}.regrade-{datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S')}"
-    out_dir.mkdir(parents=True)
     rows = read_jsonl(run_dir / "results.jsonl")
-    changed = 0
-    with open(out_dir / "results.jsonl", "w") as f:
-        for row in rows:
-            case = cases.get(row["case_id"])
-            if case is None:
-                raise SystemExit(f"{row['case_id']} is not in the current cases.yaml")
+    # Grade everything before creating the output directory, so a failure leaves nothing behind.
+    regraded, changed = [], 0
+    for row in rows:
+        case = cases.get(row["case_id"])
+        if case is None:
+            raise SystemExit(f"{row['case_id']} is not in the current cases.yaml")
+        try:
             g = grade(case.db_path, case.gold_sqls, row["sql"])
-            changed += g.passed != row["passed"]
-            row = {**row, "passed": g.passed, "lenient_passed": g.lenient_passed, "reason": g.reason, "grade": g.to_dict()}
+        except GoldExecutionError as e:
+            raise SystemExit(f"{row['case_id']}: {e}") from e
+        changed += g.passed != row["passed"]
+        regraded.append({**row, "passed": g.passed, "lenient_passed": g.lenient_passed, "reason": g.reason,
+                         "grade": g.to_dict()})
+    out_dir = _new_run_dir(runs_root, f"{run_dir.name}.regrade")
+    with open(out_dir / "results.jsonl", "w") as f:
+        for row in regraded:
             f.write(json.dumps(row) + "\n")
     if (run_dir / "errors.jsonl").exists():
         (out_dir / "errors.jsonl").write_text((run_dir / "errors.jsonl").read_text())

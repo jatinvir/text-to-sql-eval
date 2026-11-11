@@ -4,9 +4,10 @@ because scores from different prompts are not comparable."""
 from __future__ import annotations
 
 import hashlib
-import sqlite3
 from functools import lru_cache
 from pathlib import Path
+
+from .sqlexec import connect_readonly
 
 PROMPT_VERSION = "v1"
 SAMPLE_ROWS = 3
@@ -39,8 +40,7 @@ def render_schema(db_path: str | Path, sample_rows: int = SAMPLE_ROWS) -> str:
     Example rows show value formats the DDL doesn't (e.g. 'T'/'F' flags, country codes),
     which is the difference between a filter that matches and one that silently doesn't.
     """
-    conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
-    conn.text_factory = lambda b: b.decode("utf-8", errors="replace")
+    conn = connect_readonly(db_path)
     try:
         tables = conn.execute(
             "SELECT name, sql FROM sqlite_master "

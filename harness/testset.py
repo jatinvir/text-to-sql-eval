@@ -10,6 +10,7 @@ from pathlib import Path
 import yaml
 
 from .paths import CASES_YAML, db_path
+from .sqlexec import execute
 
 DIFFICULTIES = ("easy", "medium", "hard", "extra")
 
@@ -70,13 +71,23 @@ def load(path: Path = CASES_YAML) -> TestSet:
             source_index=c["source_index"],
             question=c["question"],
             gold_sql=c["gold_sql"],
-            alt_gold_sql=tuple(c.get("alt_gold_sql") or ()),
+            alt_gold_sql=_alt_gold(c),
             notes=c.get("notes") or "",
         )
         for c in doc["cases"]
     )
     _validate(cases)
     return TestSet(path=path, version=doc["version"], sha256=hashlib.sha256(raw).hexdigest(), cases=cases)
+
+
+def _alt_gold(c: dict) -> tuple[str, ...]:
+    alts = c.get("alt_gold_sql") or []
+    if not isinstance(alts, list) or not all(isinstance(a, str) and a.strip() for a in alts):
+        raise ValueError(
+            f"{c.get('case_id')}: alt_gold_sql must be a list of SQL strings, e.g.\n"
+            f"    alt_gold_sql:\n      - \"SELECT ...\"\ngot: {alts!r}"
+        )
+    return tuple(alts)
 
 
 def _validate(cases: tuple[Case, ...]) -> None:
@@ -89,6 +100,12 @@ def _validate(cases: tuple[Case, ...]) -> None:
             raise ValueError(f"{c.case_id}: unknown difficulty {c.difficulty!r}")
         if not c.db_path.exists():
             raise ValueError(f"{c.case_id}: database missing at {c.db_path} (run download_data.py)")
+    for c in cases:
+        # Alternative answers are added by hand during adjudication, so check they run.
+        for alt in c.alt_gold_sql:
+            res = execute(c.db_path, alt)
+            if not res.ok:
+                raise ValueError(f"{c.case_id}: alt_gold_sql does not run ({res.error}): {alt}")
     pairs: dict[str, list[Case]] = {}
     for c in cases:
         if c.pair_id:

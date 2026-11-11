@@ -23,10 +23,8 @@ import tempfile
 from pathlib import Path
 
 from . import audit, prompt, report, runner, testset
-from .models import load_roster
+from .models import KEY_ENV_VARS, load_roster
 from .paths import ROOT
-
-KEY_ENV_VARS = {"anthropic": "ANTHROPIC_API_KEY", "openai": "OPENAI_API_KEY", "gemini": "GEMINI_API_KEY"}
 
 
 def load_dotenv(path: Path = ROOT / ".env") -> None:

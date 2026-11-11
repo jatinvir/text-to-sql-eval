@@ -97,7 +97,9 @@ def summarize(run: Run) -> dict:
     rows = run.rows
     scored = [r for r in rows if r["status"] in SCORED_STATUSES]
     have = {(r["case_id"], r["rep"]) for r in rows}
-    unresolved_errors = [e for e in run.errors if (e["case_id"], e["rep"]) not in have]
+    # errors.jsonl gets a row per failed attempt (including on resume); keep the latest per slot.
+    unresolved_errors = list({(e["case_id"], e["rep"]): e for e in run.errors
+                              if (e["case_id"], e["rep"]) not in have}.values())
     selection = run.manifest.get("selection", {}).get("case_ids") or []
     expected = len(selection) * run.manifest.get("reps", 1)
 

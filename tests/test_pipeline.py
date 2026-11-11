@@ -1,6 +1,7 @@
 """Runner -> results -> report/audit/regrade, end to end, without spending money."""
 
 import json
+import time
 
 import anthropic
 import httpx2
@@ -68,6 +69,68 @@ def test_resume_refuses_a_different_experiment(ts, tmp_path):
         runner.run("oracle", ts, limit=2, reps=2, run_dir=run_dir, quiet=True)
 
 
+def test_resume_keeps_the_saved_case_selection(ts, tmp_path):
+    run_dir = runner.run("oracle", ts, limit=2, runs_root=tmp_path, quiet=True)
+    runner.run("oracle", ts, run_dir=run_dir, quiet=True)  # the printed resume command has no --limit
+    assert len(runner.read_jsonl(run_dir / "results.jsonl")) == 2
+    with pytest.raises(SystemExit, match="saved cases"):
+        runner.run("oracle", ts, limit=5, run_dir=run_dir, quiet=True)
+
+
+def test_runs_started_together_get_separate_directories(tmp_path):
+    first = runner._new_run_dir(tmp_path, "oracle")
+    second = runner._new_run_dir(tmp_path, "oracle")
+    assert first != second and first.exists() and second.exists()
+
+
+def test_interrupt_stops_queued_cases(ts, tmp_path, monkeypatch):
+    calls = []
+
+    class InterruptedOracle(OracleModel):
+        def complete(self, case, system, user):
+            calls.append(case.case_id)
+            if len(calls) == 1:
+                raise KeyboardInterrupt
+            time.sleep(0.2)  # a real API call takes a while
+            return super().complete(case, system, user)
+
+    monkeypatch.setattr(runner, "make_model", lambda name: InterruptedOracle(name, {}))
+    started = time.monotonic()
+    with pytest.raises(KeyboardInterrupt):
+        runner.run("oracle", ts, limit=30, runs_root=tmp_path, quiet=True, workers=1)
+    # At most the one request already in flight may finish; the other 28 must not run.
+    assert len(calls) <= 2 and time.monotonic() - started < 2, \
+        "queued cases kept running (and would be billed) after the interrupt"
+    [run_dir] = [p for p in tmp_path.iterdir() if p.is_dir()]
+    assert json.loads((run_dir / "manifest.json").read_text())["status"] == "interrupted"
+
+
+def test_repeated_provider_errors_stop_the_run(ts, tmp_path, monkeypatch):
+    calls = []
+
+    class Garbled(OracleModel):
+        def complete(self, case, system, user):
+            calls.append(case.case_id)
+            time.sleep(0.05)  # a real API call takes a while
+            raise RuntimeError("response shape not understood")
+
+    monkeypatch.setattr(runner, "make_model", lambda name: Garbled(name, {}))
+    run_dir = runner.run("oracle", ts, limit=30, runs_root=tmp_path, quiet=True, workers=1)
+    manifest = json.loads((run_dir / "manifest.json").read_text())
+    assert manifest["status"] == "aborted" and "consecutive provider_error" in manifest["fatal_error"]
+    # The breaker trips after 3; at most the request already in flight also completes.
+    assert len(calls) <= runner.MAX_CONSECUTIVE_SYSTEMATIC_ERRORS + 1
+
+
+def test_unresolved_errors_are_counted_per_slot(ts, tmp_path, monkeypatch):
+    monkeypatch.setattr(runner, "make_model", lambda name: Flaky(name, {"provider": "oracle"}))
+    Flaky.healed = False
+    run_dir = runner.run("oracle", ts, limit=5, runs_root=tmp_path, quiet=True)
+    runner.run("oracle", ts, run_dir=run_dir, quiet=True)  # c002 fails again on resume
+    assert len(runner.read_jsonl(run_dir / "errors.jsonl")) == 2
+    assert report.summarize(report.load_run(run_dir))["coverage"]["unresolved_infra_errors"] == 1
+
+
 def test_fatal_error_aborts_run(ts, tmp_path, monkeypatch):
     class Broken(OracleModel):
         def complete(self, case, system, user):
@@ -111,8 +174,10 @@ def test_dotenv_loads_without_overriding(tmp_path, monkeypatch):
 
     env = tmp_path / ".env"
     env.write_text('# comment\nexport OPENAI_API_KEY="sk-from-file"\nGEMINI_API_KEY=\nANTHROPIC_API_KEY=from-file\n')
-    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
-    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    # setenv first so monkeypatch records a restore even when the variable wasn't set.
+    for var in ("OPENAI_API_KEY", "GEMINI_API_KEY"):
+        monkeypatch.setenv(var, "placeholder")
+        monkeypatch.delenv(var)
     monkeypatch.setenv("ANTHROPIC_API_KEY", "from-shell")
     load_dotenv(env)
     assert os.environ["OPENAI_API_KEY"] == "sk-from-file"
