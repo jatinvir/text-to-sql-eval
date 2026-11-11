@@ -6,56 +6,57 @@ Newest at the bottom. Each entry: what was decided, and why.
 
 **Spider dev split (`validation`), 1034 cases.** Not `train`.
 
-- Dev is what published papers report on; the real test split was never released,
-  so dev is the de facto benchmark and our numbers are comparable to published ones.
-- Train is ~7000 cases across 140 databases — more data and more databases to
-  download than we need.
+- Dev is what published papers report on. The real test split was never released,
+  so dev is the de facto benchmark and these numbers are comparable to published ones.
+- Train is ~7000 cases across 140 databases, which is far more to download than this
+  project needs.
 
 **Known weakness:** Spider is from 2018 and partly saturated (frontier models score
-~85–90%). Accepted deliberately. The harness is benchmark-agnostic — swapping in
-BIRD later is a loader change, not a rewrite. Also, contamination is likely (these
-questions have been public for years), but it hits all models equally and we are
-comparing models against each other on identical inputs.
+~85–90%). Accepted deliberately. The harness is benchmark-agnostic, so swapping in
+BIRD later only needs a new loader. Contamination is also likely (these questions have
+been public for years), but it affects all models alike, and the comparison is between
+models on identical inputs.
 
 ## Where the data came from
 
-`premai-io/spider` on HuggingFace, **not** `xlangai/spider`.
+**`premai-io/spider` on HuggingFace.**
 
-`xlangai/spider` contains only parquet files — the rows, no SQLite databases. Without
+`xlangai/spider` contains only parquet files: the rows, but no SQLite databases. Without
 the databases there is nothing to execute against, and execution is the entire
 grading strategy. `premai-io/spider` has both (`validation.json` + `database/`).
 
-Full repo is 919 MB, but most of that is `soccer_1` (~640 MB), a *train* database we
-never touch. Download selectively: read the distinct `db_id`s out of `validation.json`
-first, then fetch only those ~20 database directories via `allow_patterns`.
+Full repo is 919 MB, but most of that is `soccer_1` (~640 MB), a *train* database this
+project never uses. Download selectively: read the distinct `db_id`s out of
+`validation.json` first, then fetch only those ~20 database directories via
+`allow_patterns`.
 
 ## Difficulty labels
 
 Vendored Spider's own `eval_hardness` into `vendor/spider_eval/hardness.py`
 (Apache 2.0, source + commit SHA recorded in that folder).
 
-Used the official definition rather than writing our own, because:
+Used the official definition instead of writing my own, because:
 
-1. We slice the headline result on this metric. "That's Spider's own hardness
-   definition, unchanged" ends the conversation; a homemade metric invites
-   "why is that hard?"
+1. The headline result is broken down by this metric. If it's Spider's own definition,
+   unchanged, there is nothing to argue about. A homemade metric invites "why is that
+   hard?"
 2. Inventing the metric *and* reporting results broken down by it invites the
    question of whether the buckets were tuned to make the result look good.
 
 Trimmed rather than vendored whole: `evaluation.py` imports `process_sql`, which
-imports `nltk` — a large dependency for code the hardness path never calls.
+imports `nltk`, a large dependency for code the hardness path never calls.
 Trimming forks the file, which is why the upstream commit SHA is recorded.
 
 How it works: three counters, then thresholds.
-- `count_component1` — surface structure: +1 each for WHERE/GROUP BY/ORDER BY/LIMIT,
+- `count_component1`: surface structure. +1 each for WHERE/GROUP BY/ORDER BY/LIMIT,
   +1 per extra joined table, +1 per OR, +1 per LIKE. (AND is free; ORs are weighted
   because models get disjunctions wrong more often.)
-- `count_component2` — number of nested subqueries.
-- `count_others` — breadth: +1 for each of "more than one" aggregate / select column /
+- `count_component2`: number of nested subqueries.
+- `count_others`: breadth. +1 for each of "more than one" aggregate / select column /
   where condition / group by.
 
-Nesting is a **gate, not points**: `comp2 == 0` guards easy and both medium clauses,
-so any subquery at all means at least "hard".
+Nesting is a **gate**: `comp2 == 0` guards easy and both medium clauses, so any
+subquery at all means at least "hard".
 
 Distribution across all 1034:
 
@@ -71,54 +72,51 @@ extra   166  16.1%
 **150 questions = 50 pairs (100 questions) + 50 singles.  100 distinct gold queries.**
 Stratified by difficulty, ~25 distinct queries per bucket. Format: YAML.
 
-*Stratified, not random:* a random 150 hands you whatever it hands you (~16% extra-hard).
-Stratified means we choose the cell sizes, so per-difficulty comparisons have enough
-cases in each bucket to say anything. The finding we want is the interaction —
-"level on easy, 20 points apart on extra-hard, at 15x the cost" — not the main effect.
+*Why stratified:* a random 150 gives whatever mix it happens to give (~16% extra-hard).
+Stratifying lets me choose the cell sizes, so each difficulty bucket has enough cases to
+say something about. The interesting finding is the interaction, e.g. "level on easy,
+20 points apart on extra-hard, at 15x the cost", and that needs per-bucket comparisons.
 
 *Pairs:* Spider dev is 564 distinct queries, 470 of which were paraphrased into two
-questions each. Sampling both halves lets us measure whether a model flips when the
-question is reworded. This is the answer to the saturation problem — aggregate
-accuracy stops discriminating at 88%, but *consistency* doesn't. Pairs must be
-sampled as a unit; sampling questions independently produces orphaned halves.
-Both halves of a pair always share a difficulty label (same SQL), so pairs never
-straddle buckets.
+questions each. Sampling both halves measures whether a model flips when the
+question is reworded. This addresses the saturation problem: aggregate accuracy stops
+discriminating at 88%, but *consistency* still does. Pairs must be sampled as a unit;
+sampling questions independently produces orphaned halves. Both halves of a pair
+always share a difficulty label (same SQL), so pairs never straddle buckets.
 
-*Why ~50 pairs and not 20:* at a true flip rate of ~5%, 20 pairs yields ~1 observed
-flip. Cannot distinguish 3% from 8%. Need enough pairs for the metric to mean anything.
+*Why ~50 pairs:* at a true flip rate of ~5%, 20 pairs would yield ~1 observed flip,
+which can't distinguish 3% from 8%. The metric needs enough pairs to mean anything.
 
-*Why 150 and not 100:* API cost is not the constraint — a full run is well under
-$1 per model. The real constraint is **human adjudication time**. Every edge case
-(empty result sets, row order, column order, float precision) is a judgment call we
-have to make, encode, and then verify by eyeballing actual cases. ~150 cases is an
-evening's audit. 1000 would be a week, so it would never get done and the grader
-would quietly be wrong.
+*Why 150 instead of 100:* API cost isn't the constraint (a full run is well under $1 per model).
+The real constraint is **human adjudication time**. Every edge case (empty result sets,
+row order, column order, float precision) is a judgment call I have to make, encode, and
+then verify by eyeballing actual cases. ~150 cases is an evening's audit. 1000 would take
+a week, so the audit would never get done and grader errors would go unnoticed.
 
-*YAML over JSONL:* YAML supports comments, and we will want to annotate cases where
-the gold SQL is questionable ("gold uses ORDER BY without a tiebreak — ties are
-non-deterministic"). Ground truth you cannot annotate is harder to defend. YAML also
+*YAML over JSONL:* YAML supports comments, and I want to annotate cases where the gold
+SQL is questionable ("gold uses ORDER BY without a tiebreak; ties are
+non-deterministic"). Annotations make the ground truth easier to defend. YAML also
 diffs per-field; JSONL shows a whole case as one changed line. Cost: YAML coerces
 unquoted values, so quote consistently.
 
 *Seed the sampler.* Hardcode `random.seed(...)`. Unseeded, re-running produces a
-different 150 and silently invalidates comparison with every past run. Generate once,
-commit the file; the script is a record of how it was made, not a live dependency.
+different 150 and breaks comparison with every past run. Generate once and commit the
+file; the script documents how the file was made and isn't meant to be rerun.
 
-*Version the test set.* Stamp every run with the case-list version, so "accuracy
-dropped 4 points" is always attributable to the model or to the cases, never
-ambiguously both.
+*Version the test set.* Stamp every run with the case-list version, so a change like
+"accuracy dropped 4 points" can always be traced to either the model or the cases.
 
 ## Pair grouping is case-insensitive
 
 **Group by `(db_id, lowercased + whitespace-collapsed gold SQL)` → 551 groups, 483 pairs.**
-Not exact string match (564 groups, 470 pairs).
+Exact string match gives 564 groups, 470 pairs.
 
-13 paraphrase pairs have gold SQL that differs only in letter case — one half is an
-all-lowercase copy of the other. Exact grouping splits each into two "singles", and the sampler
-could draw both halves as unrelated singles: a duplicated query in the singles, and pair
-data we threw away.
+13 paraphrase pairs have gold SQL that differs only in letter case: one half is an
+all-lowercase copy of the other. Exact grouping splits each into two "singles", and the
+sampler could draw both halves as unrelated singles. That means a duplicated query in the
+singles, and pair data thrown away.
 
-Lowercasing is *not* semantically safe — SQLite `=` on text is case-sensitive — and
+Lowercasing isn't semantically safe, because SQLite `=` on text is case-sensitive, and
 that turned up real gold bugs: `first_name = 'timmothy'` and `language = 'chinese'`
 return nothing, where the other half's `'Timmothy'` / `'Chinese'` return the answer. Those
 groups are excluded (next entry), so the normalization only ever merges queries that
@@ -134,11 +132,11 @@ behave identically.
 | gold returns only 0 / NULL | 14 | `count(*) … WHERE <typo>` returns the same 0 |
 | `ORDER BY … LIMIT` cuts through a tie | 24 | gold is one arbitrary pick among tied rows; a correct query can return the other one |
 
-Measured, not argued: on the full 1034, the empty-result baseline scores 43 passes. On the
+Measured: on the full 1034, the empty-result baseline scores 43 passes. On the
 sampled 150 it scores 0 (`python -m harness selfcheck`).
 
-*Cost:* a slight shift in the difficulty mix, and `flight_2` is under-represented. Accepted
-— a case that can't tell a right query from a wrong one adds noise, not signal.
+*Cost:* a slight shift in the difficulty mix, and `flight_2` is under-represented.
+Accepted, because a case that can't tell a right query from a wrong one only adds noise.
 
 *Detecting LIMIT ties:* re-run gold with its sort keys prepended to the select list and
 the LIMIT removed, then check whether the row at the cutoff ties with the next one. Works
@@ -148,22 +146,23 @@ for all 231 top-level ORDER BY queries in dev (167 no ties, 20 ties inside the r
 ## Grader
 
 **Execution match.** Run gold and prediction against the database and compare results.
-Not exact-match (many right queries per question) and not Spider's component matching
-(needs the question's parse, and rewards looking like gold rather than being right).
+Exact match was ruled out (many right queries per question), and so was Spider's
+component matching (it needs the question's parse, and rewards looking like gold rather
+than being right).
 
 The rules, each a judgment call:
 
 - **Rows are a bag (multiset).** Duplicate counts matter, so a missing or extra
-  `DISTINCT` fails — with its own reason, `duplicates`, so the audit can tell whether
+  `DISTINCT` fails, with its own reason (`duplicates`) so the audit can tell whether
   the question actually implied distinctness.
-- **Column order is free, column count is not.** "Names and ages" doesn't define an order.
-  The grader searches for a column permutation that reproduces gold's rows; matching each
-  column's value multiset alone isn't enough when two columns hold the same values (tested).
-  Extra columns fail strictly. `lenient_passed` records whether extra columns were the
-  *only* problem, and the report shows lenient accuracy next to strict. Extra id columns are
-  the most common "wrong but useful" LLM answer, so the gap between the two is worth knowing.
-  The prompt asks for exactly the requested columns, so strict grading doesn't penalize a
-  model for following the instructions it was given.
+- **Column order is free; column count must match.** "Names and ages" doesn't define an
+  order. The grader searches for a column permutation that reproduces gold's rows; matching
+  each column's value multiset alone isn't enough when two columns hold the same values
+  (tested). Extra columns fail strictly. `lenient_passed` records whether extra columns were
+  the *only* problem, and the report shows lenient accuracy next to strict. Extra id columns
+  are the most common "wrong but useful" LLM answer, so the gap between the two is worth
+  knowing. The prompt asks for exactly the requested columns, so strict grading doesn't
+  penalize a model for following the instructions it was given.
 - **Order only matters if gold has a top-level ORDER BY**, detected with a
   literal-aware parser that agrees with Spider's own parse on 1034/1034 dev queries. Rows
   whose sort keys tie in gold may come in any order among themselves: gold's rows are split
@@ -213,7 +212,8 @@ queries give more places to mutate. (An earlier version of this entry said the m
 Consequence for the headline: execution match overstates every bucket's accuracy by a
 similar margin, so it inflates absolute scores more than it distorts comparisons between
 buckets. The fix is test-suite accuracy (Zhong et al., 2020): grade against several fuzzed
-copies of each database so boundary values exist. It's a grader extension, not a rewrite.
+copies of each database so boundary values exist. That would extend the current grader,
+not replace it.
 
 Caveat on the 15%: the mutants are synthetic, not real model answers, and a few
 "wrong-by-construction" edits are equivalent on inspection (e.g. `HAVING count(*) >= 1`
@@ -221,7 +221,7 @@ after an inner join). Treat it as an estimate of grader leniency, not a measured
 rate on model output.
 
 (Separately, "add DISTINCT" and "JOIN → LEFT JOIN" pass ~90%, but those rewrites are
-usually *correct* — `DISTINCT count(*)` is still the count — so they're reported apart.)
+usually *correct* (`DISTINCT count(*)` is still the count), so they're reported apart.)
 
 ## Prompt (v1)
 
@@ -230,9 +230,10 @@ usually *correct* — `DISTINCT count(*)` is still the count — so they're repo
 
 - DDL keeps primary and foreign keys, which is how joins get found. Example rows show value
   formats the DDL hides (`'T'`/`'F'` flags, lowercase country names in `car_1`); without
-  them, a filter can silently match nothing.
-- Structured output removes "couldn't find the SQL in the prose" as a failure mode, so the
-  score measures SQL, not formatting. All three vendors' APIs support it for every roster model.
+  them, a filter can match nothing.
+- Structured output removes "couldn't find the SQL in the prose" as a failure mode, so
+  formatting can't affect the score. All three vendors' APIs support it for every roster
+  model.
 - Instructions ask for exactly the requested columns, in the order mentioned, and ORDER BY /
   LIMIT only when asked, so the prompt agrees with the grader.
 - `PROMPT_VERSION` plus a content fingerprint go into every manifest. Scores from different
@@ -253,11 +254,11 @@ because they'd fail every case.
 passed and is listed separately. `truncated` (hit max_tokens) and `unparseable` are left out
 of *accuracy* but counted in *strict accuracy*, and the report shows both.
 
-**The model that answered must be the model we asked for.** The runner checks the served
+**The model that answered must be the model I asked for.** The runner checks the served
 model on every response. It accepts the exact ID, or the ID plus a snapshot-shaped suffix
 (`-20251001`, `-2026-08-01`, `-001`, `-09-2025`). A plain prefix match isn't enough:
 `claude-fable-5-1` starts with `claude-fable-5` but is a different model. Refusal fallbacks
-are deliberately off: a fallback means another model answered.
+are deliberately off, because a fallback means another model answered.
 
 **Stop spending as soon as something is systematically wrong.**
 - Ctrl-C stops a run immediately: queued cases are cancelled, and only requests already in
@@ -266,23 +267,23 @@ are deliberately off: a fallback means another model answered.
   shape, a served-model mismatch) goes to `errors.jsonl` like any infra error. Three in a
   row abort the run, because that pattern is a harness bug and every further case would be
   billed for nothing.
-- An unexpected crash marks the manifest `crashed` rather than leaving it `running`.
+- An unexpected crash marks the manifest `crashed` instead of leaving it `running`.
 
 **Manifest per run**: model config verbatim, test-set SHA-256, prompt fingerprint, grader
 version, reps, case selection, git commit and dirty flag, SQLite/SDK versions. `--resume`
 refuses to continue a run if any of those changed, and always resumes the saved case
-selection, so resuming a 10-case smoke run can't silently turn it into a 150-case run.
+selection, so resuming a 10-case smoke run can't accidentally turn it into a 150-case run.
 Each run gets its own directory, even two started in the same second.
 
 **Adjudication edits are validated, and they don't break the reproducibility check.**
 `alt_gold_sql` must be a list of queries that run; a typo fails at load with the case ID,
-not halfway through a regrade. `build_testset.py --check` (and its test) compare the
+before any regrade starts. `build_testset.py --check` (and its test) compare the
 generated cases ignoring `notes` and `alt_gold_sql`, so the test suite stays green through
 the review pass and still catches a change to the sampled cases themselves. Regenerating
 refuses to overwrite a file that has adjudication edits.
 
-**Roster**: see "Cross-vendor comparison" below. Change it by adding a new roster name,
-not by editing an existing one.
+**Roster**: see "Cross-vendor comparison" below. To change it, add a new roster name
+instead of editing an existing one.
 
 ## Cross-vendor comparison
 
@@ -294,9 +295,9 @@ Flash. Sonnet 5 is kept as an optional middle tier.
 the test set was sized for one evening per audit. Two tiers per vendor is enough to ask
 both "does the cheap model fall off on extra-hard?" and "does that hold across vendors?".
 
-*Tiers matched by role, not exact price:* no two vendors price the same tier the same way
+*Tiers are matched by role:* no two vendors price the same tier the same way
 (flagship $5 / $4 / $2 per MTok input; low-cost $1 / $0.20 / $0.75). The report shows cost
-per case next to accuracy, so price differences are visible rather than assumed away.
+per case next to accuracy, so price differences stay visible.
 The most expensive models (GPT-6 Astra, Claude Fable 5.1, both $10/$50) are left out;
 they can be added as extra roster names.
 
@@ -308,11 +309,11 @@ they can be added as extra roster names.
 - The same grader, test set, and statistics. A provider class only translates the request
   and response; it has no say in scoring.
 
-**Reasoning effort: "high" everywhere it can be set, not vendor defaults.** Defaults
-differ: Opus 5 and Gemini 3.1 Pro default to high, GPT-5.6 and Gemini 3.8 Flash to medium.
-"Defaults vs defaults" would mean comparing different amounts of thinking and calling it
-a model difference. Haiku 4.5 has no effort control and doesn't think by default, so it
-runs as-is, and that is noted wherever its numbers appear. Gemini can't turn thinking off.
+**Reasoning effort is "high" everywhere it can be set.** Vendor defaults differ: Opus 5
+and Gemini 3.1 Pro default to high, GPT-5.6 and Gemini 3.8 Flash to medium. Comparing
+defaults would mean comparing different amounts of thinking and calling it a model
+difference. Haiku 4.5 has no effort control and doesn't think by default, so it runs
+as-is, and that is noted wherever its numbers appear. Gemini can't turn thinking off.
 
 **Usage normalized to one shape.** Every vendor reports tokens differently (OpenAI counts
 cached tokens inside `input_tokens`; Gemini reports thinking tokens separately from
