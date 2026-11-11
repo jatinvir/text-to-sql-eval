@@ -1,7 +1,6 @@
 # Decisions log
 
-Newest at the bottom. Each entry: what was decided, and why — the why is the part
-that matters in an interview.
+Newest at the bottom. Each entry: what was decided, and why.
 
 ## Test set source
 
@@ -361,13 +360,10 @@ cases are the only fix for that.
 
 ---
 
-## Next step
+## Open work
 
-1. Set `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY`, then smoke-test each model:
-   `python -m harness run <model> --limit 10` (checks auth, the model ID, the request format
-   against the live API, the served-model check, and real cost per case)
-2. Full runs of the six roster models; `python -m harness compare …`
-3. The adjudication evening: `python -m harness audit <run>` on each run, one checkbox per failure.
-   If more than ~1 in 10 failures are grader or gold errors, fix those (`alt_gold_sql`, grader)
-   and `regrade` before reading any comparison
-4. If the extra-hard gap is close: test-suite accuracy (see "How lenient is execution match here?")
+1. Adjudication: `python -m harness audit <run>` on each run, one checkbox per failure. If
+   more than ~1 in 10 failures are grader or gold errors, fix those (`alt_gold_sql`, grader)
+   and `regrade`. The results in `comparison.md` have not been adjudicated yet.
+2. Test-suite accuracy (see "How lenient is execution match here?"), which matters most if
+   an extra-hard gap is close.

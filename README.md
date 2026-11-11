@@ -123,3 +123,15 @@ Other commands: `report RUN_DIR`, `prompt CASE_ID` (shows the exact prompt), `mo
 | `harness/audit.py` | adjudication sheet |
 | `analysis/grader_mutations.py` | measures how many wrong queries the grader lets through |
 | `runs/<id>/` | `manifest.json`, `results.jsonl`, `errors.jsonl`, `report.md`, `summary.json`, `audit.md` |
+
+## Included results
+
+`comparison.md` and `runs/` hold the results of the cross-vendor comparison. Each manifest's
+`git.commit` refers to development history that isn't part of this repository. OpenAI
+organization IDs in logged error messages are replaced with `org-REDACTED`.
+
+## Data and licensing
+
+The test data comes from [Spider](https://yale-lily.github.io/spider) (Yu et al., 2018) and
+is licensed under [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/). See
+[NOTICE.md](NOTICE.md) for the full attribution and the files it covers.
