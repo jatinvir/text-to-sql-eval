@@ -1,0 +1,97 @@
+{
+  "run_id": "20260915-002819_gemini-3.8-flash",
+  "model_name": "gemini-3.8-flash",
+  "model": "gemini-3.8-flash",
+  "status": "complete",
+  "testset_sha": "51989fb4b4f8",
+  "grader_version": "2",
+  "prompt_version": "v1",
+  "reps": 1,
+  "coverage": {
+    "expected": 10,
+    "with_output": 10,
+    "scored": 10,
+    "unresolved_infra_errors": 0
+  },
+  "statuses": {
+    "ok": 10
+  },
+  "accuracy": {
+    "n": 10,
+    "rate": 1.0,
+    "ci": [
+      1.0,
+      1.0
+    ]
+  },
+  "strict_accuracy": {
+    "n": 10,
+    "rate": 1.0,
+    "ci": [
+      1.0,
+      1.0
+    ]
+  },
+  "lenient_accuracy": {
+    "n": 10,
+    "rate": 1.0,
+    "ci": [
+      1.0,
+      1.0
+    ]
+  },
+  "by_difficulty": {
+    "easy": {
+      "n": 10,
+      "rate": 1.0,
+      "ci": [
+        1.0,
+        1.0
+      ]
+    },
+    "medium": {
+      "n": 0,
+      "rate": null,
+      "ci": null
+    },
+    "hard": {
+      "n": 0,
+      "rate": null,
+      "ci": null
+    },
+    "extra": {
+      "n": 0,
+      "rate": null,
+      "ci": null
+    }
+  },
+  "failure_reasons": {},
+  "infra_error_kinds": {},
+  "pairs": {
+    "pairs": 5,
+    "flip_rate": 0.0,
+    "flip_ci": [
+      0.0,
+      0.0
+    ],
+    "both_pass": 1.0,
+    "both_fail": 0.0
+  },
+  "cost": {
+    "total_usd": 0.02766075,
+    "per_case_usd": 0.0027660750000000002,
+    "rows_without_price": 0,
+    "tokens": {
+      "input_tokens": 9511,
+      "output_tokens": 5474,
+      "cache_read_input_tokens": 0,
+      "cache_creation_input_tokens": 0,
+      "reasoning_tokens": 5242
+    }
+  },
+  "latency_s": {
+    "p50": 2.3728167500230484,
+    "p95": 11.89259583299281
+  },
+  "retried_rows": 0
+}

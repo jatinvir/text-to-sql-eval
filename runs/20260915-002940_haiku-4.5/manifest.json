@@ -1,0 +1,52 @@
+{
+  "run_id": "20260915-002940_haiku-4.5",
+  "model_name": "haiku-4.5",
+  "model_config": {
+    "provider": "anthropic",
+    "model": "claude-haiku-4-5",
+    "max_tokens": 16000
+  },
+  "testset_sha256": "51989fb4b4f80e48678b7410f719d21e7ad21d3609060e551d0f072d2507358d",
+  "prompt_fingerprint": "253fcacf64a1",
+  "grader_version": "2",
+  "reps": 1,
+  "testset_path": "cases.yaml",
+  "testset_version": 1,
+  "prompt_version": "v1",
+  "selection": {
+    "case_ids": [
+      "c001",
+      "c002",
+      "c039",
+      "c040",
+      "c077",
+      "c078",
+      "c114",
+      "c115",
+      "c149",
+      "c150"
+    ],
+    "limit": null
+  },
+  "git": {
+    "commit": "d06cd8b15a0d4dacaf7b9757a9cc11482bcf01a1",
+    "dirty": true
+  },
+  "environment": {
+    "python": "3.13.1",
+    "sqlite": "3.48.0",
+    "sdks": {
+      "anthropic": "1.5.0",
+      "openai": "3.14.0",
+      "google-genai": "2.23.0"
+    }
+  },
+  "started_at": "2026-09-15T00:29:40+00:00",
+  "status": "complete",
+  "finished_at": "2026-09-15T00:29:44+00:00",
+  "counts": {
+    "expected": 10,
+    "results": 10,
+    "missing": 0
+  }
+}

@@ -1,0 +1,112 @@
+{
+  "run_id": "20260915-003451_haiku-4.5",
+  "model_name": "haiku-4.5",
+  "model": "claude-haiku-4-5",
+  "status": "complete",
+  "testset_sha": "51989fb4b4f8",
+  "grader_version": "2",
+  "prompt_version": "v1",
+  "reps": 1,
+  "coverage": {
+    "expected": 150,
+    "with_output": 150,
+    "scored": 150,
+    "unresolved_infra_errors": 0
+  },
+  "statuses": {
+    "ok": 150
+  },
+  "accuracy": {
+    "n": 150,
+    "rate": 0.7866666666666666,
+    "ci": [
+      0.7062937062937062,
+      0.8627450980392157
+    ]
+  },
+  "strict_accuracy": {
+    "n": 150,
+    "rate": 0.7866666666666666,
+    "ci": [
+      0.7062937062937062,
+      0.8627450980392157
+    ]
+  },
+  "lenient_accuracy": {
+    "n": 150,
+    "rate": 0.7933333333333333,
+    "ci": [
+      0.7142857142857143,
+      0.868421052631579
+    ]
+  },
+  "by_difficulty": {
+    "easy": {
+      "n": 38,
+      "rate": 0.8947368421052632,
+      "ci": [
+        0.7948717948717948,
+        0.9743589743589743
+      ]
+    },
+    "medium": {
+      "n": 38,
+      "rate": 0.9210526315789473,
+      "ci": [
+        0.7948717948717948,
+        1.0
+      ]
+    },
+    "hard": {
+      "n": 37,
+      "rate": 0.7027027027027027,
+      "ci": [
+        0.525,
+        0.8717948717948718
+      ]
+    },
+    "extra": {
+      "n": 37,
+      "rate": 0.6216216216216216,
+      "ci": [
+        0.4473684210526316,
+        0.7941176470588235
+      ]
+    }
+  },
+  "failure_reasons": {
+    "wrong_rows": 24,
+    "duplicates": 3,
+    "extra_columns": 2,
+    "wrong_order": 1,
+    "pred_sql_error": 1,
+    "missing_columns": 1
+  },
+  "infra_error_kinds": {},
+  "pairs": {
+    "pairs": 50,
+    "flip_rate": 0.16,
+    "flip_ci": [
+      0.06,
+      0.26
+    ],
+    "both_pass": 0.7,
+    "both_fail": 0.14
+  },
+  "cost": {
+    "total_usd": 0.196016,
+    "per_case_usd": 0.0013067733333333334,
+    "rows_without_price": 0,
+    "tokens": {
+      "input_tokens": 163491,
+      "output_tokens": 6505,
+      "cache_read_input_tokens": 0,
+      "cache_creation_input_tokens": 0
+    }
+  },
+  "latency_s": {
+    "p50": 0.9520964170224033,
+    "p95": 1.8838207080261782
+  },
+  "retried_rows": 0
+}

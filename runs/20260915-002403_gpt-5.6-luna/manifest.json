@@ -1,0 +1,48 @@
+{
+  "run_id": "20260915-002403_gpt-5.6-luna",
+  "model_name": "gpt-5.6-luna",
+  "model_config": {
+    "provider": "openai",
+    "model": "gpt-5.6-luna",
+    "max_tokens": 16000,
+    "reasoning_effort": "high"
+  },
+  "testset_sha256": "51989fb4b4f80e48678b7410f719d21e7ad21d3609060e551d0f072d2507358d",
+  "prompt_fingerprint": "253fcacf64a1",
+  "grader_version": "2",
+  "reps": 1,
+  "testset_path": "cases.yaml",
+  "testset_version": 1,
+  "prompt_version": "v1",
+  "selection": {
+    "case_ids": [
+      "c001",
+      "c002",
+      "c003",
+      "c004",
+      "c005",
+      "c006",
+      "c007",
+      "c008",
+      "c009",
+      "c010"
+    ],
+    "limit": 10
+  },
+  "git": {
+    "commit": "d06cd8b15a0d4dacaf7b9757a9cc11482bcf01a1",
+    "dirty": true
+  },
+  "environment": {
+    "python": "3.13.1",
+    "sqlite": "3.48.0",
+    "sdks": {
+      "anthropic": "1.5.0",
+      "openai": "3.14.0",
+      "google-genai": "2.23.0"
+    }
+  },
+  "started_at": "2026-09-15T00:24:03+00:00",
+  "status": "interrupted",
+  "updated_at": "2026-09-15T00:25:53+00:00"
+}

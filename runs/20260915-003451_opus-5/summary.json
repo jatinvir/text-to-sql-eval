@@ -1,0 +1,110 @@
+{
+  "run_id": "20260915-003451_opus-5",
+  "model_name": "opus-5",
+  "model": "claude-opus-5",
+  "status": "complete",
+  "testset_sha": "51989fb4b4f8",
+  "grader_version": "2",
+  "prompt_version": "v1",
+  "reps": 1,
+  "coverage": {
+    "expected": 150,
+    "with_output": 150,
+    "scored": 150,
+    "unresolved_infra_errors": 0
+  },
+  "statuses": {
+    "ok": 150
+  },
+  "accuracy": {
+    "n": 150,
+    "rate": 0.8933333333333333,
+    "ci": [
+      0.8333333333333334,
+      0.9466666666666667
+    ]
+  },
+  "strict_accuracy": {
+    "n": 150,
+    "rate": 0.8933333333333333,
+    "ci": [
+      0.8333333333333334,
+      0.9466666666666667
+    ]
+  },
+  "lenient_accuracy": {
+    "n": 150,
+    "rate": 0.8933333333333333,
+    "ci": [
+      0.8333333333333334,
+      0.9466666666666667
+    ]
+  },
+  "by_difficulty": {
+    "easy": {
+      "n": 38,
+      "rate": 0.9210526315789473,
+      "ci": [
+        0.8292682926829268,
+        1.0
+      ]
+    },
+    "medium": {
+      "n": 38,
+      "rate": 0.9736842105263158,
+      "ci": [
+        0.9166666666666666,
+        1.0
+      ]
+    },
+    "hard": {
+      "n": 37,
+      "rate": 0.8918918918918919,
+      "ci": [
+        0.7631578947368421,
+        1.0
+      ]
+    },
+    "extra": {
+      "n": 37,
+      "rate": 0.7837837837837838,
+      "ci": [
+        0.6153846153846154,
+        0.9230769230769231
+      ]
+    }
+  },
+  "failure_reasons": {
+    "wrong_rows": 10,
+    "duplicates": 3,
+    "missing_columns": 2,
+    "wrong_order": 1
+  },
+  "infra_error_kinds": {},
+  "pairs": {
+    "pairs": 50,
+    "flip_rate": 0.1,
+    "flip_ci": [
+      0.02,
+      0.2
+    ],
+    "both_pass": 0.84,
+    "both_fail": 0.06
+  },
+  "cost": {
+    "total_usd": 1.614345,
+    "per_case_usd": 0.010762299999999999,
+    "rows_without_price": 0,
+    "tokens": {
+      "input_tokens": 232524,
+      "output_tokens": 18069,
+      "cache_read_input_tokens": 0,
+      "cache_creation_input_tokens": 0
+    }
+  },
+  "latency_s": {
+    "p50": 2.476205040991772,
+    "p95": 3.7958191669895314
+  },
+  "retried_rows": 0
+}

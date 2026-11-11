@@ -1,0 +1,111 @@
+{
+  "run_id": "20260915-004226_gpt-5.6-luna",
+  "model_name": "gpt-5.6-luna",
+  "model": "gpt-5.6-luna",
+  "status": "complete",
+  "testset_sha": "51989fb4b4f8",
+  "grader_version": "2",
+  "prompt_version": "v1",
+  "reps": 1,
+  "coverage": {
+    "expected": 150,
+    "with_output": 150,
+    "scored": 150,
+    "unresolved_infra_errors": 0
+  },
+  "statuses": {
+    "ok": 150
+  },
+  "accuracy": {
+    "n": 150,
+    "rate": 0.8266666666666667,
+    "ci": [
+      0.7483443708609272,
+      0.8979591836734694
+    ]
+  },
+  "strict_accuracy": {
+    "n": 150,
+    "rate": 0.8266666666666667,
+    "ci": [
+      0.7483443708609272,
+      0.8979591836734694
+    ]
+  },
+  "lenient_accuracy": {
+    "n": 150,
+    "rate": 0.8333333333333334,
+    "ci": [
+      0.7534246575342466,
+      0.9050632911392406
+    ]
+  },
+  "by_difficulty": {
+    "easy": {
+      "n": 38,
+      "rate": 0.868421052631579,
+      "ci": [
+        0.7352941176470589,
+        0.9736842105263158
+      ]
+    },
+    "medium": {
+      "n": 38,
+      "rate": 0.8947368421052632,
+      "ci": [
+        0.7368421052631579,
+        1.0
+      ]
+    },
+    "hard": {
+      "n": 37,
+      "rate": 0.7837837837837838,
+      "ci": [
+        0.6153846153846154,
+        0.9230769230769231
+      ]
+    },
+    "extra": {
+      "n": 37,
+      "rate": 0.7567567567567568,
+      "ci": [
+        0.5714285714285714,
+        0.9024390243902439
+      ]
+    }
+  },
+  "failure_reasons": {
+    "wrong_rows": 21,
+    "duplicates": 3,
+    "missing_columns": 1,
+    "extra_columns": 1
+  },
+  "infra_error_kinds": {},
+  "pairs": {
+    "pairs": 50,
+    "flip_rate": 0.1,
+    "flip_ci": [
+      0.02,
+      0.18
+    ],
+    "both_pass": 0.76,
+    "both_fail": 0.14
+  },
+  "cost": {
+    "total_usd": 0.0506525,
+    "per_case_usd": 0.00033768333333333335,
+    "rows_without_price": 0,
+    "tokens": {
+      "input_tokens": 84008,
+      "output_tokens": 27536,
+      "cache_read_input_tokens": 40385,
+      "cache_creation_input_tokens": 0,
+      "reasoning_tokens": 18840
+    }
+  },
+  "latency_s": {
+    "p50": 2.4074387089931406,
+    "p95": 5.828708832967095
+  },
+  "retried_rows": 9
+}

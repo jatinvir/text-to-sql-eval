@@ -1,0 +1,98 @@
+{
+  "run_id": "20260915-003145_opus-5",
+  "model_name": "opus-5",
+  "model": "claude-opus-5",
+  "status": "complete",
+  "testset_sha": "51989fb4b4f8",
+  "grader_version": "2",
+  "prompt_version": "v1",
+  "reps": 1,
+  "coverage": {
+    "expected": 10,
+    "with_output": 10,
+    "scored": 10,
+    "unresolved_infra_errors": 0
+  },
+  "statuses": {
+    "ok": 10
+  },
+  "accuracy": {
+    "n": 10,
+    "rate": 0.8,
+    "ci": [
+      0.4,
+      1.0
+    ]
+  },
+  "strict_accuracy": {
+    "n": 10,
+    "rate": 0.8,
+    "ci": [
+      0.4,
+      1.0
+    ]
+  },
+  "lenient_accuracy": {
+    "n": 10,
+    "rate": 0.8,
+    "ci": [
+      0.4,
+      1.0
+    ]
+  },
+  "by_difficulty": {
+    "easy": {
+      "n": 2,
+      "rate": 1.0,
+      "ci": null
+    },
+    "medium": {
+      "n": 2,
+      "rate": 1.0,
+      "ci": null
+    },
+    "hard": {
+      "n": 2,
+      "rate": 0.0,
+      "ci": null
+    },
+    "extra": {
+      "n": 4,
+      "rate": 1.0,
+      "ci": [
+        1.0,
+        1.0
+      ]
+    }
+  },
+  "failure_reasons": {
+    "duplicates": 2
+  },
+  "infra_error_kinds": {},
+  "pairs": {
+    "pairs": 4,
+    "flip_rate": 0.0,
+    "flip_ci": [
+      0.0,
+      0.0
+    ],
+    "both_pass": 0.75,
+    "both_fail": 0.25
+  },
+  "cost": {
+    "total_usd": 0.10499499999999999,
+    "per_case_usd": 0.010499499999999998,
+    "rows_without_price": 0,
+    "tokens": {
+      "input_tokens": 16044,
+      "output_tokens": 991,
+      "cache_read_input_tokens": 0,
+      "cache_creation_input_tokens": 0
+    }
+  },
+  "latency_s": {
+    "p50": 3.213394833030179,
+    "p95": 5.236164374975488
+  },
+  "retried_rows": 0
+}

@@ -1,0 +1,99 @@
+{
+  "run_id": "20260915-002940_haiku-4.5",
+  "model_name": "haiku-4.5",
+  "model": "claude-haiku-4-5",
+  "status": "complete",
+  "testset_sha": "51989fb4b4f8",
+  "grader_version": "2",
+  "prompt_version": "v1",
+  "reps": 1,
+  "coverage": {
+    "expected": 10,
+    "with_output": 10,
+    "scored": 10,
+    "unresolved_infra_errors": 0
+  },
+  "statuses": {
+    "ok": 10
+  },
+  "accuracy": {
+    "n": 10,
+    "rate": 0.7,
+    "ci": [
+      0.3,
+      1.0
+    ]
+  },
+  "strict_accuracy": {
+    "n": 10,
+    "rate": 0.7,
+    "ci": [
+      0.3,
+      1.0
+    ]
+  },
+  "lenient_accuracy": {
+    "n": 10,
+    "rate": 0.7,
+    "ci": [
+      0.3,
+      1.0
+    ]
+  },
+  "by_difficulty": {
+    "easy": {
+      "n": 2,
+      "rate": 1.0,
+      "ci": null
+    },
+    "medium": {
+      "n": 2,
+      "rate": 1.0,
+      "ci": null
+    },
+    "hard": {
+      "n": 2,
+      "rate": 0.0,
+      "ci": null
+    },
+    "extra": {
+      "n": 4,
+      "rate": 0.75,
+      "ci": [
+        0.0,
+        1.0
+      ]
+    }
+  },
+  "failure_reasons": {
+    "duplicates": 2,
+    "pred_sql_error": 1
+  },
+  "infra_error_kinds": {},
+  "pairs": {
+    "pairs": 4,
+    "flip_rate": 0.0,
+    "flip_ci": [
+      0.0,
+      0.0
+    ],
+    "both_pass": 0.75,
+    "both_fail": 0.25
+  },
+  "cost": {
+    "total_usd": 0.013422,
+    "per_case_usd": 0.0013422,
+    "rows_without_price": 0,
+    "tokens": {
+      "input_tokens": 11242,
+      "output_tokens": 436,
+      "cache_read_input_tokens": 0,
+      "cache_creation_input_tokens": 0
+    }
+  },
+  "latency_s": {
+    "p50": 2.603059499990195,
+    "p95": 3.483438000024762
+  },
+  "retried_rows": 0
+}

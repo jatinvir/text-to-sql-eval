@@ -1,0 +1,111 @@
+{
+  "run_id": "20260915-003451_gemini-3.1-pro",
+  "model_name": "gemini-3.1-pro",
+  "model": "gemini-3.1-pro-preview",
+  "status": "complete",
+  "testset_sha": "51989fb4b4f8",
+  "grader_version": "2",
+  "prompt_version": "v1",
+  "reps": 1,
+  "coverage": {
+    "expected": 150,
+    "with_output": 150,
+    "scored": 150,
+    "unresolved_infra_errors": 0
+  },
+  "statuses": {
+    "ok": 150
+  },
+  "accuracy": {
+    "n": 150,
+    "rate": 0.86,
+    "ci": [
+      0.7880794701986755,
+      0.9178082191780822
+    ]
+  },
+  "strict_accuracy": {
+    "n": 150,
+    "rate": 0.86,
+    "ci": [
+      0.7880794701986755,
+      0.9178082191780822
+    ]
+  },
+  "lenient_accuracy": {
+    "n": 150,
+    "rate": 0.86,
+    "ci": [
+      0.7880794701986755,
+      0.9178082191780822
+    ]
+  },
+  "by_difficulty": {
+    "easy": {
+      "n": 38,
+      "rate": 0.9473684210526315,
+      "ci": [
+        0.868421052631579,
+        1.0
+      ]
+    },
+    "medium": {
+      "n": 38,
+      "rate": 0.9210526315789473,
+      "ci": [
+        0.8,
+        1.0
+      ]
+    },
+    "hard": {
+      "n": 37,
+      "rate": 0.8648648648648649,
+      "ci": [
+        0.7222222222222222,
+        0.9743589743589743
+      ]
+    },
+    "extra": {
+      "n": 37,
+      "rate": 0.7027027027027027,
+      "ci": [
+        0.5128205128205128,
+        0.8717948717948718
+      ]
+    }
+  },
+  "failure_reasons": {
+    "wrong_rows": 14,
+    "duplicates": 4,
+    "extra_columns": 2,
+    "missing_columns": 1
+  },
+  "infra_error_kinds": {},
+  "pairs": {
+    "pairs": 50,
+    "flip_rate": 0.08,
+    "flip_ci": [
+      0.02,
+      0.16
+    ],
+    "both_pass": 0.82,
+    "both_fail": 0.1
+  },
+  "cost": {
+    "total_usd": 1.179892,
+    "per_case_usd": 0.007865946666666667,
+    "rows_without_price": 0,
+    "tokens": {
+      "input_tokens": 145418,
+      "output_tokens": 74088,
+      "cache_read_input_tokens": 0,
+      "cache_creation_input_tokens": 0,
+      "reasoning_tokens": 67918
+    }
+  },
+  "latency_s": {
+    "p50": 4.999266583006829,
+    "p95": 10.80112758296309
+  },
+  "retried_rows": 37
+}

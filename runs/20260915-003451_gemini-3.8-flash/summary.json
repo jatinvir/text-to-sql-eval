@@ -1,0 +1,111 @@
+{
+  "run_id": "20260915-003451_gemini-3.8-flash",
+  "model_name": "gemini-3.8-flash",
+  "model": "gemini-3.8-flash",
+  "status": "complete",
+  "testset_sha": "51989fb4b4f8",
+  "grader_version": "2",
+  "prompt_version": "v1",
+  "reps": 1,
+  "coverage": {
+    "expected": 150,
+    "with_output": 150,
+    "scored": 150,
+    "unresolved_infra_errors": 0
+  },
+  "statuses": {
+    "ok": 150
+  },
+  "accuracy": {
+    "n": 150,
+    "rate": 0.88,
+    "ci": [
+      0.8104575163398693,
+      0.9391891891891891
+    ]
+  },
+  "strict_accuracy": {
+    "n": 150,
+    "rate": 0.88,
+    "ci": [
+      0.8104575163398693,
+      0.9391891891891891
+    ]
+  },
+  "lenient_accuracy": {
+    "n": 150,
+    "rate": 0.88,
+    "ci": [
+      0.8104575163398693,
+      0.9391891891891891
+    ]
+  },
+  "by_difficulty": {
+    "easy": {
+      "n": 38,
+      "rate": 0.9736842105263158,
+      "ci": [
+        0.9142857142857143,
+        1.0
+      ]
+    },
+    "medium": {
+      "n": 38,
+      "rate": 0.9473684210526315,
+      "ci": [
+        0.8378378378378378,
+        1.0
+      ]
+    },
+    "hard": {
+      "n": 37,
+      "rate": 0.8918918918918919,
+      "ci": [
+        0.75,
+        1.0
+      ]
+    },
+    "extra": {
+      "n": 37,
+      "rate": 0.7027027027027027,
+      "ci": [
+        0.5135135135135135,
+        0.875
+      ]
+    }
+  },
+  "failure_reasons": {
+    "wrong_rows": 13,
+    "duplicates": 3,
+    "extra_columns": 1,
+    "missing_columns": 1
+  },
+  "infra_error_kinds": {},
+  "pairs": {
+    "pairs": 50,
+    "flip_rate": 0.06,
+    "flip_ci": [
+      0.0,
+      0.14
+    ],
+    "both_pass": 0.84,
+    "both_fail": 0.1
+  },
+  "cost": {
+    "total_usd": 1.074651,
+    "per_case_usd": 0.00716434,
+    "rows_without_price": 0,
+    "tokens": {
+      "input_tokens": 145418,
+      "output_tokens": 257490,
+      "cache_read_input_tokens": 0,
+      "cache_creation_input_tokens": 0,
+      "reasoning_tokens": 250936
+    }
+  },
+  "latency_s": {
+    "p50": 4.537121583998669,
+    "p95": 23.816791000019293
+  },
+  "retried_rows": 0
+}
