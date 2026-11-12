@@ -89,7 +89,7 @@ def run(
     testset: TestSet,
     *,
     reps: int = 1,
-    workers: int = 8,
+    workers: int | None = None,
     case_ids: list[str] | None = None,
     limit: int | None = None,
     run_dir: Path | None = None,
@@ -97,6 +97,8 @@ def run(
     quiet: bool = False,
 ) -> Path:
     model = make_model(model_name)
+    # A local server answers one request at a time; queueing 8 would count wait time as latency.
+    workers = workers or int(model.config.get("workers", 8))
 
     identity = {
         "model_name": model_name,

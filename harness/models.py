@@ -57,7 +57,7 @@ class FatalError(Exception):
 
 
 # Where each provider's SDK looks for credentials (Anthropic also accepts an `ant auth login`
-# profile; Gemini also accepts GOOGLE_API_KEY).
+# profile; Gemini also accepts GOOGLE_API_KEY). Local servers need no key.
 KEY_ENV_VARS = {"anthropic": "ANTHROPIC_API_KEY", "openai": "OPENAI_API_KEY", "gemini": "GEMINI_API_KEY"}
 
 
@@ -75,6 +75,7 @@ def make_model(name: str):
         "anthropic": AnthropicModel,
         "openai": OpenAIModel,
         "gemini": GeminiModel,
+        "local": LocalModel,
         "oracle": OracleModel,
         "null": NullModel,
     }
@@ -83,6 +84,8 @@ def make_model(name: str):
         raise SystemExit(f"model {name!r}: unknown provider {cfg.get('provider')!r}")
     try:
         return provider(name, cfg)
+    except FatalError as e:
+        raise SystemExit(f"could not set up {name!r}: {e}") from e
     except Exception as e:  # SDK clients raise on construction when credentials are missing
         env_var = KEY_ENV_VARS.get(cfg["provider"], "the API key")
         raise SystemExit(
@@ -441,3 +444,101 @@ class GeminiModel(APIModel):
             latency_s=latency,
             attempts=attempts,
         )
+
+
+class LocalModel(APIModel):
+    """Open-weight model behind an OpenAI-compatible Chat Completions server (Ollama, vLLM,
+    llama.cpp server, LM Studio). Same system prompt, user message, JSON schema and output
+    budget as the hosted vendors; only the transport differs.
+
+    Pinning: a local tag such as `qwen3:8b` can be re-pulled to different weights, so for
+    Ollama the roster records the weights' `digest` and every run checks it before the first
+    request. That digest is part of the model config, so it lands in the run manifest.
+    """
+
+    DEFAULT_BASE_URL = "http://localhost:11434/v1"  # Ollama
+
+    def __init__(self, name: str, cfg: dict, client=None, http=None):
+        super().__init__(name, cfg)
+        import httpx
+        import openai
+
+        self._sdk = openai
+        self.base_url = cfg.get("base_url", self.DEFAULT_BASE_URL).rstrip("/")
+        self.client = client or openai.OpenAI(
+            base_url=self.base_url, api_key="local", max_retries=0, timeout=self.request_timeout_s,
+        )
+        if cfg.get("digest"):
+            self._check_digest(http or httpx.Client(timeout=30))
+
+    def _check_digest(self, http) -> None:
+        """Ollama-only: confirm the tag still points at the pinned weights."""
+        native = self.base_url.removesuffix("/v1")
+        try:
+            tags = http.get(f"{native}/api/tags").raise_for_status().json()
+        except Exception as e:
+            raise FatalError(f"cannot reach the model server at {native} ({type(e).__name__}: {e}); "
+                             f"is it running? (`ollama serve`)") from e
+        local = {m.get("model") or m.get("name"): m.get("digest", "") for m in tags.get("models", [])}
+        if self.model not in local:
+            raise FatalError(f"{self.model} is not pulled on {native} (`ollama pull {self.model}`)")
+        if not local[self.model].startswith(self.config["digest"]):
+            raise FatalError(f"{self.model} has digest {local[self.model][:12]}, roster pins "
+                             f"{self.config['digest'][:12]}: the tag now points at different weights. "
+                             f"Add a new roster name instead of editing this one.")
+
+    def request_params(self, system: str, user: str) -> dict:
+        params = {
+            "model": self.model,
+            "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}],
+            "max_tokens": self.max_tokens,
+            "response_format": {"type": "json_schema",
+                                "json_schema": {"name": "sql_answer", "schema": OUTPUT_SCHEMA, "strict": True}},
+        }
+        if self.config.get("reasoning_effort"):
+            params["reasoning_effort"] = self.config["reasoning_effort"]
+        if "temperature" in self.config:
+            params["temperature"] = self.config["temperature"]
+        return params
+
+    def _call(self, system, user):
+        return self.client.chat.completions.create(**self.request_params(system, user))
+
+    def _classify(self, e):
+        o = self._sdk
+        if isinstance(e, o.APIStatusError):
+            return self._retry_for_status(e.status_code)
+        if isinstance(e, o.APIConnectionError):  # includes APITimeoutError; also "server not running"
+            return RETRY
+        return None
+
+    def _is_timeout(self, e):
+        return isinstance(e, self._sdk.APITimeoutError)
+
+    def _to_completion(self, resp, latency, attempts):
+        served = self._check_served(resp.model, attempts)
+        choice = resp.choices[0]
+        msg = choice.message
+        u = resp.usage
+        # Thinking models put their reasoning outside `content` (Ollama `reasoning`, vLLM
+        # `reasoning_content`), so `content` is the answer; completion_tokens counts both.
+        usage = {
+            "input_tokens": (u.prompt_tokens or 0) if u else 0,
+            "output_tokens": (u.completion_tokens or 0) if u else 0,
+            "cache_read_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
+        }
+        completion = self._finish(
+            text=msg.content or "",
+            refusal=bool(getattr(msg, "refusal", None)) or choice.finish_reason == "content_filter",
+            truncated=choice.finish_reason == "length",
+            usage=usage,
+            stop_reason=choice.finish_reason,
+            served_model=served,
+            request_id=resp.id,
+            latency_s=latency,
+            attempts=attempts,
+        )
+        # No per-token charge. Hardware and electricity aren't counted (see NOTES.md).
+        completion.cost_usd = 0.0
+        return completion

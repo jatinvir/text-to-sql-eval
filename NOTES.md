@@ -359,6 +359,36 @@ table prints the interval, so this is visible in every result. Reps reduce sampl
 *within* a question, but not the uncertainty from having only 25 queries per bucket. More
 cases are the only fix for that.
 
+## Open-weight models
+
+**One provider for any OpenAI-compatible server, starting with Qwen3 8B on Ollama.**
+Ollama, vLLM, llama.cpp server and LM Studio all serve `/v1/chat/completions` with JSON-schema
+`response_format`, so one class covers them; `base_url` picks the server. The request carries
+the same system prompt, user message, answer schema and 16,000-token budget as the hosted
+vendors, and the same retry, served-model and status rules apply.
+
+*Qwen3 8B (Q4_K_M):* the largest thinking model that fits comfortably in 16 GB of unified
+memory next to everything else. It runs at `reasoning_effort: high`, matching the hosted models,
+so the comparison is thinking vs thinking rather than a fast non-reasoning model against
+reasoning ones.
+
+*Pin the weights, not the tag.* `qwen3:8b` is a mutable tag; re-pulling it can change the
+weights. The roster records the Ollama digest, which lands in every manifest, and the provider
+checks it against `/api/tags` before the first request. A mismatch stops the run: add a new
+roster name rather than editing the old one, same rule as the hosted models.
+
+*One request at a time* (`workers: 1`). A local server queues concurrent requests, so 8
+workers would record queue wait as latency.
+
+*Cost is $0, and that's not the whole cost.* There is no per-token charge, so cost per case
+is 0 and cost ratios against it are meaningless. Hardware and electricity aren't counted.
+Latency is the honest price here: it depends on the machine (an M1 Pro for these runs) and isn't
+comparable to hosted-API latency.
+
+*Not held identical:* sampling defaults. No hosted model gets a temperature either, but
+Ollama's defaults come from the model file. `temperature` can be set in the roster if a run
+needs it.
+
 ---
 
 ## Open work

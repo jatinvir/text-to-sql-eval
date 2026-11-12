@@ -10,7 +10,7 @@ import openai
 import pytest
 
 from harness import models, pricing
-from harness.models import AnthropicModel, FatalError, GeminiModel, InfraError, OpenAIModel
+from harness.models import AnthropicModel, FatalError, GeminiModel, InfraError, LocalModel, OpenAIModel
 from harness.testset import Case
 
 CASE = Case(case_id="c1", pair_id=None, difficulty="easy", db_id="x", source_index=0,
@@ -106,7 +106,11 @@ def test_refusal_truncation_and_unparseable_are_distinct_statuses():
 def test_roster_is_complete():
     api_providers = {"anthropic", "openai", "gemini"}
     for name, cfg in models.load_roster().items():
-        assert cfg["provider"] in api_providers | {"oracle", "null"}, name
+        assert cfg["provider"] in api_providers | {"local", "oracle", "null"}, name
+        if cfg["provider"] == "local":
+            assert cfg["max_tokens"] == 16000, f"{name}: every model gets the same output budget"
+            assert cfg.get("digest"), f"{name}: local tags can be re-pulled; pin the weights digest"
+            continue
         if cfg["provider"] in api_providers:
             assert cfg["model"] in pricing.PRICES_PER_MTOK, f"{name}: no price, cost would be unknown"
             assert cfg["max_tokens"] == 16000, f"{name}: every model gets the same output budget"
@@ -354,3 +358,97 @@ def test_ordinary_gemini_rate_limit_is_still_retried():
                     "You exceeded your current quota, please check your plan and billing details."}})
     c = make_gemini([rate_limited, (200, gem_response())]).complete(CASE, "s", "u")
     assert c.status == "ok" and c.attempts == 2
+
+
+# ---------------------------------------------------------------------------
+# Local open-weight models (OpenAI-compatible Chat Completions) through the real SDK
+# ---------------------------------------------------------------------------
+
+def chat_response(text='{"sql": "SELECT 1"}', model="qwen3:8b", finish="stop", reasoning=None, refusal=None):
+    message = {"role": "assistant", "content": text, "refusal": refusal}
+    if reasoning is not None:
+        message["reasoning"] = reasoning  # Ollama's field for thinking text
+    return {
+        "id": "chatcmpl-1", "object": "chat.completion", "created": 0, "model": model,
+        "choices": [{"index": 0, "message": message, "finish_reason": finish}],
+        "usage": {"prompt_tokens": 900, "completion_tokens": 350, "total_tokens": 1250},
+    }
+
+
+def make_local(responses, cfg=None, requests=None):
+    queue = list(responses)
+
+    def handler(request):
+        if requests is not None:
+            requests.append((str(request.url), json.loads(request.content)))
+        status, body = queue.pop(0)
+        return httpx2.Response(status, json=body)
+
+    client = openai.OpenAI(api_key="local", base_url="http://mock/v1", max_retries=0,
+                           http_client=openai.DefaultHttpxClient(transport=httpx2.MockTransport(handler)))
+    config = {"provider": "local", "model": "qwen3:8b", "max_tokens": 16000, **(cfg or {})}
+    return LocalModel("test-local", config, client=client)
+
+
+def test_local_success_request_shape_usage_and_zero_cost():
+    requests = []
+    c = make_local([(200, chat_response(reasoning="join singer to concert"))], cfg={"reasoning_effort": "high"},
+                   requests=requests).complete(CASE, "system prompt", "Question: How many?")
+    assert c.status == "ok" and c.sql == "SELECT 1" and c.served_model == "qwen3:8b"
+    assert c.usage == {"input_tokens": 900, "output_tokens": 350, "cache_read_input_tokens": 0,
+                       "cache_creation_input_tokens": 0}
+    assert c.cost_usd == 0.0 and c.request_id == "chatcmpl-1"
+    url, body = requests[0]
+    assert url.endswith("/v1/chat/completions")
+    assert body["messages"] == [{"role": "system", "content": "system prompt"},
+                                {"role": "user", "content": "Question: How many?"}]
+    fmt = body["response_format"]
+    assert fmt["type"] == "json_schema" and fmt["json_schema"]["schema"]["required"] == ["sql"]
+    assert body["max_tokens"] == 16000 and body["reasoning_effort"] == "high" and "temperature" not in body
+
+
+def test_local_retries_fatal_mismatch_and_statuses():
+    c = make_local([oai_error(503), (200, chat_response())]).complete(CASE, "s", "u")
+    assert c.attempts == 2 and c.status == "ok"
+    with pytest.raises(FatalError):
+        make_local([oai_error(404, "model_not_found")]).complete(CASE, "s", "u")
+    with pytest.raises(InfraError) as exc:  # a sibling tag is a different model
+        make_local([(200, chat_response(model="qwen3:14b"))]).complete(CASE, "s", "u")
+    assert exc.value.kind == "served_model_mismatch"
+    assert make_local([(200, chat_response(finish="length", text='{"sql'))]).complete(CASE, "s", "u").status == "truncated"
+    assert make_local([(200, chat_response(text=None, refusal="no"))]).complete(CASE, "s", "u").status == "refusal"
+    assert make_local([(200, chat_response(text="SELECT 1"))]).complete(CASE, "s", "u").status == "unparseable"
+
+
+def test_local_server_down_is_retried_then_infra_error():
+    def handler(request):
+        raise httpx2.ConnectError("connection refused", request=request)
+
+    client = openai.OpenAI(api_key="local", base_url="http://mock/v1", max_retries=0,
+                           http_client=openai.DefaultHttpxClient(transport=httpx2.MockTransport(handler)))
+    m = LocalModel("l", {"provider": "local", "model": "qwen3:8b", "max_tokens": 16000, "max_attempts": 2}, client=client)
+    with pytest.raises(InfraError) as exc:
+        m.complete(CASE, "s", "u")
+    assert exc.value.kind == "api_error" and exc.value.attempts == 2
+
+
+def _tags_client(models_list=None, status=200):
+    def handler(request):
+        assert str(request.url) == "http://mock/api/tags"  # Ollama's native API, not /v1
+        return httpx.Response(status, json={"models": models_list or []})
+    return httpx.Client(transport=httpx.MockTransport(handler))
+
+
+@pytest.mark.parametrize("tags,error", [
+    ([{"model": "qwen3:8b", "digest": "abc123def456"}], None),
+    ([{"model": "qwen3:8b", "digest": "fff999"}], "different weights"),
+    ([{"model": "llama3:8b", "digest": "abc123"}], "not pulled"),
+])
+def test_local_digest_pin_is_checked_before_running(tags, error):
+    cfg = {"provider": "local", "model": "qwen3:8b", "max_tokens": 16000,
+           "base_url": "http://mock/v1", "digest": "abc123"}
+    if error is None:
+        LocalModel("l", cfg, client=object(), http=_tags_client(tags))
+    else:
+        with pytest.raises(FatalError, match=error):
+            LocalModel("l", cfg, client=object(), http=_tags_client(tags))

@@ -56,9 +56,24 @@ Then fill in the keys and confirm which models are ready:
 | Anthropic | `ANTHROPIC_API_KEY` (or an `ant auth login` profile) | `opus-5`, `sonnet-5`, `haiku-4.5` |
 | OpenAI | `OPENAI_API_KEY` | `gpt-5.6-sol`, `gpt-5.6-luna` |
 | Google | `GEMINI_API_KEY` | `gemini-3.1-pro`, `gemini-3.8-flash` |
+| Open-weight (local) | none; a running [Ollama](https://ollama.com) server | `qwen3-8b` |
 
 Models are defined in [models.yaml](models.yaml), with one flagship-tier and one low-cost
 model per vendor.
+
+Open-weight models run through any OpenAI-compatible Chat Completions server (Ollama by
+default; set `base_url` for vLLM, llama.cpp or LM Studio). For the roster model:
+
+```bash
+ollama pull qwen3:8b
+```
+
+```bash
+ollama serve
+```
+
+The roster pins the weights' digest, and the run stops before the first request if the
+local tag now points at different weights.
 
 Smoke-test each model on 10 cases first. This checks the key, the model ID, and the
 request format, and shows the real cost per case:

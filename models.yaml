@@ -19,7 +19,8 @@
 # each API reports on every response. No refusal fallbacks: a score from a fallback model
 # measures nothing.
 #
-# Credentials: ANTHROPIC_API_KEY, OPENAI_API_KEY, GEMINI_API_KEY.
+# Credentials: ANTHROPIC_API_KEY, OPENAI_API_KEY, GEMINI_API_KEY. Local models need a running
+# server (`ollama serve`) instead.
 
 models:
   # --- Anthropic ---
@@ -65,6 +66,16 @@ models:
     model: "gemini-3.8-flash"
     max_tokens: 16000
     thinking_level: "high"
+
+  # --- Open-weight (local, via Ollama's OpenAI-compatible endpoint) ---
+  # `digest` pins the weights: a tag can be re-pulled to different ones. Q4_K_M, 8.2B params.
+  "qwen3-8b":
+    provider: "local"
+    model: "qwen3:8b"
+    digest: "500a1f067a9f"
+    max_tokens: 16000
+    reasoning_effort: "high"
+    workers: 1  # one request at a time, so latency isn't queue wait
 
   # Harness self-checks - no API calls. See `python -m harness selfcheck`.
   "oracle":

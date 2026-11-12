@@ -119,7 +119,12 @@ def cmd_models(args) -> None:
     for name, cfg in load_roster().items():
         extra = {k: v for k, v in cfg.items() if k != "provider"}
         env_var = KEY_ENV_VARS.get(cfg["provider"])
-        key = "no key needed" if env_var is None else f"{env_var} {'set' if os.environ.get(env_var) else 'MISSING'}"
+        if cfg["provider"] == "local":
+            key = f"server {cfg.get('base_url', 'localhost:11434')}"
+        elif env_var is None:
+            key = "no key needed"
+        else:
+            key = f"{env_var} {'set' if os.environ.get(env_var) else 'MISSING'}"
         print(f"{name:16s} {cfg['provider']:10s} {key:28s} {extra}")
 
 
@@ -131,7 +136,7 @@ def main(argv: list[str] | None = None) -> None:
     p = sub.add_parser("run", help="run a model over the test set")
     p.add_argument("model", help="name from models.yaml")
     p.add_argument("--reps", type=int, default=1, help="repetitions per case (default 1)")
-    p.add_argument("--workers", type=int, default=8, help="concurrent requests (default 8)")
+    p.add_argument("--workers", type=int, help="concurrent requests (default: the roster's `workers`, else 8)")
     p.add_argument("--cases", help="comma-separated case ids (smoke tests)")
     p.add_argument("--limit", type=int, help="only the first N cases (smoke tests)")
     p.add_argument("--resume", metavar="RUN_DIR", help="continue an existing run directory")
