@@ -1,0 +1,111 @@
+{
+  "run_id": "20261112-201730_qwen3-8b",
+  "model_name": "qwen3-8b",
+  "model": "qwen3:8b",
+  "status": "complete",
+  "testset_sha": "51989fb4b4f8",
+  "grader_version": "2",
+  "prompt_version": "v1",
+  "reps": 1,
+  "coverage": {
+    "expected": 150,
+    "with_output": 150,
+    "scored": 150,
+    "unresolved_infra_errors": 0
+  },
+  "statuses": {
+    "ok": 150
+  },
+  "accuracy": {
+    "n": 150,
+    "rate": 0.7466666666666667,
+    "ci": [
+      0.6619718309859155,
+      0.831081081081081
+    ]
+  },
+  "strict_accuracy": {
+    "n": 150,
+    "rate": 0.7466666666666667,
+    "ci": [
+      0.6619718309859155,
+      0.831081081081081
+    ]
+  },
+  "lenient_accuracy": {
+    "n": 150,
+    "rate": 0.76,
+    "ci": [
+      0.6710526315789473,
+      0.8451612903225807
+    ]
+  },
+  "by_difficulty": {
+    "easy": {
+      "n": 38,
+      "rate": 0.9210526315789473,
+      "ci": [
+        0.8333333333333334,
+        1.0
+      ]
+    },
+    "medium": {
+      "n": 38,
+      "rate": 0.8947368421052632,
+      "ci": [
+        0.7575757575757576,
+        1.0
+      ]
+    },
+    "hard": {
+      "n": 37,
+      "rate": 0.7297297297297297,
+      "ci": [
+        0.5555555555555556,
+        0.8823529411764706
+      ]
+    },
+    "extra": {
+      "n": 37,
+      "rate": 0.43243243243243246,
+      "ci": [
+        0.24324324324324326,
+        0.6285714285714286
+      ]
+    }
+  },
+  "failure_reasons": {
+    "wrong_rows": 24,
+    "extra_columns": 5,
+    "duplicates": 4,
+    "pred_sql_error": 4,
+    "missing_columns": 1
+  },
+  "infra_error_kinds": {},
+  "pairs": {
+    "pairs": 50,
+    "flip_rate": 0.12,
+    "flip_ci": [
+      0.04,
+      0.22
+    ],
+    "both_pass": 0.68,
+    "both_fail": 0.2
+  },
+  "cost": {
+    "total_usd": 0.0,
+    "per_case_usd": 0.0,
+    "rows_without_price": 0,
+    "tokens": {
+      "input_tokens": 134397,
+      "output_tokens": 136149,
+      "cache_read_input_tokens": 0,
+      "cache_creation_input_tokens": 0
+    }
+  },
+  "latency_s": {
+    "p50": 32.76781066600233,
+    "p95": 101.07280612498289
+  },
+  "retried_rows": 0
+}
