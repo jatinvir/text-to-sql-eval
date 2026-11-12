@@ -127,8 +127,9 @@ Other commands: `report RUN_DIR`, `prompt CASE_ID` (shows the exact prompt), `mo
 ## Included results
 
 `comparison.md` and `runs/` hold the results of the cross-vendor comparison. Each manifest's
-`git.commit` refers to development history that isn't part of this repository. OpenAI
-organization IDs in logged error messages are replaced with `org-REDACTED`.
+`git.commit` (`d06cd8b`) is in this repository's history; `dirty: true` means the working tree
+had uncommitted changes at run time. OpenAI organization IDs in logged error messages are
+replaced with `org-REDACTED`.
 
 ## Data and licensing
 
